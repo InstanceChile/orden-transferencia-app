@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema OT - Gestión de Órdenes de Transferencia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <div class="logo-instance">
+            <span class="instance-text">Inst<span class="instance-dot">a</span>nce</span>
+          </div>
+          <div class="logo-divider"></div>
+          <div class="logo-text">
+            <h1>Sistema OT</h1>
+            <span class="logo-subtitle">Gestión de Órdenes de Transferencia</span>
+          </div>
+        </div>
+        <div class="header-stats" id="headerStats">
+          <div class="stat-pill">
+            <span class="stat-label">Total OT</span>
+            <span class="stat-value" id="statTotal">-</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Navigation Tabs -->
+      <nav class="tabs-nav">
+        <button class="tab-btn active" data-tab="ot">
+          <span class="tab-icon">📋</span>
+          <span class="tab-text">OT</span>
+          <span class="tab-badge">Solicitud</span>
+        </button>
+        <button class="tab-btn" data-tab="ota">
+          <span class="tab-icon">🔧</span>
+          <span class="tab-text">OTA</span>
+          <span class="tab-badge">Preparación</span>
+        </button>
+        <button class="tab-btn" data-tab="otadet">
+          <span class="tab-icon">📊</span>
+          <span class="tab-text">OTADET</span>
+          <span class="tab-badge">Detalle EAN</span>
+        </button>
+        <button class="tab-btn" data-tab="otf">
+          <span class="tab-icon">✅</span>
+          <span class="tab-text">OTF</span>
+          <span class="tab-badge">Recepción</span>
+        </button>
+      </nav>
+
+      <!-- Tab Panels -->
+      <div class="tab-panels">
+        <!-- OT Panel -->
+        <div class="tab-panel active" id="panel-ot">
+          <div class="panel-header">
+            <div class="panel-info">
+              <h2>📋 Carga de OT (Solicitud)</h2>
+              <p>Registra las órdenes de transferencia solicitadas por Abastecimiento</p>
+            </div>
+            <button class="btn btn-secondary" onclick="downloadTemplate('OT')">
+              <span class="btn-icon">📥</span>
+              Descargar Plantilla
+            </button>
+          </div>
+          
+          <div class="upload-section">
+            <div class="upload-zone" id="dropzone-ot" data-type="ot">
+              <div class="upload-icon">📁</div>
+              <h3>Arrastra tu archivo aquí</h3>
+              <p>o haz clic para seleccionar</p>
+              <span class="upload-formats">Formatos: CSV, XLSX, XLS</span>
+              <input type="file" id="file-ot" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            
+            <div class="upload-info">
+              <h4>Campos requeridos:</h4>
+              <ul class="field-list">
+                <li><code>id_ot</code> - ID único de la orden</li>
+                <li><code>sku</code> - Código del producto</li>
+                <li><code>cantidad_solicitada</code> - Cantidad a transferir</li>
+              </ul>
+              <h4>Campos opcionales:</h4>
+              <ul class="field-list optional">
+                <li><code>mlc</code> - Código MercadoLibre</li>
+                <li><code>cliente</code> - Cliente asociado</li>
+                <li><code>fecha_solicitud</code> - Fecha de solicitud</li>
+                <li><code>fecha_transferencia_comprometida</code> - Fecha comprometida</li>
+              </ul>
+              
+              <div class="clientes-info">
+                <h4>Clientes válidos:</h4>
+                <div class="clientes-tags" id="clientesTags"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- OTA Panel -->
+        <div class="tab-panel" id="panel-ota">
+          <div class="panel-header">
+            <div class="panel-info">
+              <h2>🔧 Carga de OTA (Preparación)</h2>
+              <p>Registra la preparación de órdenes por Operaciones</p>
+            </div>
+            <button class="btn btn-secondary" onclick="downloadTemplate('OTA')">
+              <span class="btn-icon">📥</span>
+              Descargar Plantilla
+            </button>
+          </div>
+
+          <div class="filter-section">
+            <label class="filter-label">
+              <span>Filtrar por OT pendiente:</span>
+              <select id="select-ot-ota" class="select-input">
+                <option value="">-- Todas las OT --</option>
+              </select>
+            </label>
+          </div>
+          
+          <div class="upload-section">
+            <div class="upload-zone" id="dropzone-ota" data-type="ota">
+              <div class="upload-icon">📁</div>
+              <h3>Arrastra tu archivo aquí</h3>
+              <p>o haz clic para seleccionar</p>
+              <span class="upload-formats">Formatos: CSV, XLSX, XLS</span>
+              <input type="file" id="file-ota" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            
+            <div class="upload-info">
+              <h4>Campos requeridos:</h4>
+              <ul class="field-list">
+                <li><code>id_ot</code> - ID de la orden</li>
+                <li><code>sku</code> - Código del producto</li>
+                <li><code>cantidad_preparada</code> - Cantidad preparada</li>
+              </ul>
+              <h4>Campos opcionales:</h4>
+              <ul class="field-list optional">
+                <li><code>fecha_preparacion</code> - Fecha de preparación</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- OTADET Panel -->
+        <div class="tab-panel" id="panel-otadet">
+          <div class="panel-header">
+            <div class="panel-info">
+              <h2>📊 Carga de OTADET (Detalle EAN)</h2>
+              <p>Registra el detalle por código EAN de cada producto preparado</p>
+            </div>
+            <button class="btn btn-secondary" onclick="downloadTemplate('OTADET')">
+              <span class="btn-icon">📥</span>
+              Descargar Plantilla
+            </button>
+          </div>
+
+          <div class="filter-section">
+            <label class="filter-label">
+              <span>Filtrar por OT pendiente:</span>
+              <select id="select-ot-otadet" class="select-input">
+                <option value="">-- Todas las OT --</option>
+              </select>
+            </label>
+          </div>
+          
+          <div class="upload-section">
+            <div class="upload-zone" id="dropzone-otadet" data-type="otadet">
+              <div class="upload-icon">📁</div>
+              <h3>Arrastra tu archivo aquí</h3>
+              <p>o haz clic para seleccionar</p>
+              <span class="upload-formats">Formatos: CSV, XLSX, XLS</span>
+              <input type="file" id="file-otadet" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            
+            <div class="upload-info">
+              <h4>Campos requeridos:</h4>
+              <ul class="field-list">
+                <li><code>id_ot</code> - ID de la orden</li>
+                <li><code>sku</code> - Código del producto</li>
+                <li><code>ean</code> - Código de barras EAN</li>
+                <li><code>cantidad_preparada_ean</code> - Cantidad por EAN</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- OTF Panel -->
+        <div class="tab-panel" id="panel-otf">
+          <div class="panel-header">
+            <div class="panel-info">
+              <h2>✅ Carga de OTF (Recepción)</h2>
+              <p>Registra la recepción final de órdenes en destino</p>
+            </div>
+            <button class="btn btn-secondary" onclick="downloadTemplate('OTF')">
+              <span class="btn-icon">📥</span>
+              Descargar Plantilla
+            </button>
+          </div>
+
+          <div class="filter-section">
+            <label class="filter-label">
+              <span>Filtrar por OT pendiente:</span>
+              <select id="select-ot-otf" class="select-input">
+                <option value="">-- Todas las OT --</option>
+              </select>
+            </label>
+          </div>
+          
+          <div class="upload-section">
+            <div class="upload-zone" id="dropzone-otf" data-type="otf">
+              <div class="upload-icon">📁</div>
+              <h3>Arrastra tu archivo aquí</h3>
+              <p>o haz clic para seleccionar</p>
+              <span class="upload-formats">Formatos: CSV, XLSX, XLS</span>
+              <input type="file" id="file-otf" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            
+            <div class="upload-info">
+              <h4>Campos requeridos:</h4>
+              <ul class="field-list">
+                <li><code>id_ot</code> - ID de la orden</li>
+                <li><code>sku</code> - Código del producto</li>
+                <li><code>cantidad_recepcionada</code> - Cantidad recibida</li>
+              </ul>
+              <h4>Campos opcionales:</h4>
+              <ul class="field-list optional">
+                <li><code>fecha_recepcion</code> - Fecha de recepción</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Results Modal -->
+    <div class="modal" id="resultsModal">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">Resultado de Carga</h3>
+          <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+          <!-- Contenido dinámico -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" onclick="closeModal()">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Procesando archivo...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
