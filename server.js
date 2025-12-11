@@ -14,11 +14,26 @@ const XLSX = require('xlsx');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Validar variables de entorno
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('❌ ERROR: Variables de entorno faltantes');
+  console.error('SUPABASE_URL:', SUPABASE_URL ? '✅ Configurada' : '❌ Faltante');
+  console.error('SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Configurada' : '❌ Faltante');
+  console.error('');
+  console.error('Por favor configura las variables de entorno:');
+  console.error('  SUPABASE_URL=https://tu-proyecto.supabase.co');
+  console.error('  SUPABASE_ANON_KEY=tu-anon-key');
+  process.exit(1);
+}
+
+console.log('✅ Variables de entorno cargadas correctamente');
+console.log('SUPABASE_URL:', SUPABASE_URL);
+
 // Configuración de Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
-);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Middleware
 app.use(cors());
