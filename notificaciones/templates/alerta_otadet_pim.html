@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerta OTADET vs PIM</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); padding: 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                ⚠️ Alerta de Inconsistencia EAN
+                            </h1>
+                            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">
+                                OTADET vs Catálogo PIM
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Banner de advertencia -->
+                    <tr>
+                        <td style="background: #fff3cd; border-left: 4px solid #ff9800; padding: 20px;">
+                            <p style="margin: 0; color: #856404; font-size: 16px; font-weight: bold;">
+                                🔍 Se detectaron inconsistencias entre los códigos EAN registrados y el catálogo PIM
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Detalles de la orden -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #ff9800; padding-bottom: 10px;">
+                                📋 Detalles de la Orden
+                            </h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                                <tr>
+                                    <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold; width: 40%;">
+                                        ID OT:
+                                    </td>
+                                    <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #dee2e6;">
+                                        {{ID_OT}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold;">
+                                        SKU:
+                                    </td>
+                                    <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #dee2e6;">
+                                        {{SKU}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- EAN Faltantes -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #dc3545; padding-bottom: 10px;">
+                                ❌ Códigos EAN Faltantes
+                            </h2>
+                            
+                            <div style="background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                                <p style="margin: 0 0 10px 0; color: #721c24; font-weight: bold;">
+                                    EAN presentes en el catálogo PIM pero NO registrados en OTADET:
+                                </p>
+                                <ul style="margin: 0; padding-left: 20px; color: #721c24;">
+                                    {{EAN_FALTANTES}}
+                                </ul>
+                            </div>
+                            
+                            <p style="margin: 0; color: #6c757d; font-size: 14px; font-style: italic;">
+                                💡 Estos EAN deberían estar incluidos según el catálogo de productos
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- EAN Sobrantes -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">
+                                ➕ Códigos EAN Sobrantes
+                            </h2>
+                            
+                            <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                                <p style="margin: 0 0 10px 0; color: #856404; font-weight: bold;">
+                                    EAN registrados en OTADET pero NO presentes en el catálogo PIM:
+                                </p>
+                                <ul style="margin: 0; padding-left: 20px; color: #856404;">
+                                    {{EAN_SOBRANTES}}
+                                </ul>
+                            </div>
+                            
+                            <p style="margin: 0; color: #6c757d; font-size: 14px; font-style: italic;">
+                                ⚠️ Estos EAN no están registrados en el catálogo o están inactivos
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Diferencias de Cantidad -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #17a2b8; padding-bottom: 10px;">
+                                📊 Diferencias de Cantidad por EAN
+                            </h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                                <thead>
+                                    <tr style="background-color: #17a2b8; color: #ffffff;">
+                                        <th style="padding: 12px; text-align: left; border: 1px solid #dee2e6;">EAN</th>
+                                        <th style="padding: 12px; text-align: center; border: 1px solid #dee2e6;">Esperado</th>
+                                        <th style="padding: 12px; text-align: center; border: 1px solid #dee2e6;">Registrado</th>
+                                        <th style="padding: 12px; text-align: center; border: 1px solid #dee2e6;">Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {{DIFERENCIAS_CANTIDAD}}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Impacto -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #e7f3ff; border-left: 4px solid #2196F3; padding: 20px; border-radius: 4px;">
+                                <h3 style="color: #004085; margin: 0 0 10px 0; font-size: 16px;">
+                                    ⚡ Impacto
+                                </h3>
+                                <ul style="margin: 0; padding-left: 20px; color: #004085; line-height: 1.8;">
+                                    <li>Los EAN faltantes pueden causar problemas en la trazabilidad del producto</li>
+                                    <li>Los EAN sobrantes pueden indicar errores en el escaneo o productos no catalogados</li>
+                                    <li>Las diferencias de cantidad pueden afectar el inventario</li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Acción requerida -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #d4edda; border-left: 4px solid #28a745; padding: 20px; border-radius: 4px;">
+                                <h3 style="color: #155724; margin: 0 0 10px 0; font-size: 16px;">
+                                    ✅ Acciones Requeridas
+                                </h3>
+                                <ol style="margin: 10px 0 0 0; padding-left: 20px; color: #155724; line-height: 1.8;">
+                                    <li><strong>EAN Faltantes:</strong> Verificar si fueron escaneados correctamente. Agregar a OTADET si corresponde.</li>
+                                    <li><strong>EAN Sobrantes:</strong> Verificar si el código es correcto. Actualizar catálogo PIM si es un nuevo producto.</li>
+                                    <li><strong>Diferencias de Cantidad:</strong> Revisar conteo físico y ajustar en sistema.</li>
+                                    <li><strong>Coordinación:</strong> Contactar al equipo de Operaciones para validación física.</li>
+                                </ol>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Resumen estadístico -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #6c757d; padding-bottom: 10px;">
+                                📈 Resumen Estadístico
+                            </h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="padding: 15px; background-color: #f8d7da; border: 1px solid #f5c6cb; text-align: center; width: 33%;">
+                                        <div style="font-size: 32px; font-weight: bold; color: #721c24;">{{TOTAL_FALTANTES}}</div>
+                                        <div style="font-size: 14px; color: #721c24; margin-top: 5px;">EAN Faltantes</div>
+                                    </td>
+                                    <td style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; text-align: center; width: 33%;">
+                                        <div style="font-size: 32px; font-weight: bold; color: #856404;">{{TOTAL_SOBRANTES}}</div>
+                                        <div style="font-size: 14px; color: #856404; margin-top: 5px;">EAN Sobrantes</div>
+                                    </td>
+                                    <td style="padding: 15px; background-color: #d1ecf1; border: 1px solid #bee5eb; text-align: center; width: 33%;">
+                                        <div style="font-size: 32px; font-weight: bold; color: #0c5460;">{{TOTAL_DIFERENCIAS}}</div>
+                                        <div style="font-size: 14px; color: #0c5460; margin-top: 5px;">Diferencias de Cantidad</div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Información adicional -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table style="width: 100%; border-collapse: collapse; background-color: #f8f9fa; border-radius: 4px;">
+                                <tr>
+                                    <td style="padding: 15px;">
+                                        <p style="margin: 0; color: #6c757d; font-size: 14px;">
+                                            <strong>📅 Fecha de Detección:</strong> {{FECHA_DETECCION}}
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px; border-top: 1px solid #dee2e6;">
+                                        <p style="margin: 0; color: #6c757d; font-size: 14px;">
+                                            <strong>🔗 Validación:</strong> Comparación automática contra catálogo PIM
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #343a40; padding: 20px; text-align: center;">
+                            <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 14px;">
+                                Sistema de Gestión de Órdenes de Transferencia
+                            </p>
+                            <p style="margin: 0; color: #adb5bd; font-size: 12px;">
+                                Este es un mensaje automático. Por favor no responder a este correo.
+                            </p>
+                            <p style="margin: 10px 0 0 0; color: #adb5bd; font-size: 12px;">
+                                Para soporte técnico, contactar al equipo de IT
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

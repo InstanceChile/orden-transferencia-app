@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alerta OT vs OTA</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td align="center" style="padding: 20px 0;">
+                <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    
+                    <!-- Header con alerta -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); padding: 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                🚨 Alerta de Diferencia
+                            </h1>
+                            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">
+                                OT vs OTA - Preparación
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Banner de advertencia -->
+                    <tr>
+                        <td style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px;">
+                            <p style="margin: 0; color: #856404; font-size: 16px; font-weight: bold;">
+                                ⚠️ Se detectó una diferencia significativa entre la cantidad solicitada y la cantidad preparada
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Detalles de la orden -->
+                    <tr>
+                        <td style="padding: 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">
+                                📋 Detalles de la Orden
+                            </h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                                <tr>
+                                    <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold; width: 40%;">
+                                        ID OT:
+                                    </td>
+                                    <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #dee2e6;">
+                                        {{ID_OT}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold;">
+                                        SKU:
+                                    </td>
+                                    <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #dee2e6;">
+                                        {{SKU}}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; font-weight: bold;">
+                                        MLC:
+                                    </td>
+                                    <td style="padding: 12px; background-color: #ffffff; border-bottom: 1px solid #dee2e6;">
+                                        {{MLC}}
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Comparación de cantidades -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <h2 style="color: #333333; margin: 0 0 20px 0; font-size: 20px; border-bottom: 2px solid #ffc107; padding-bottom: 10px;">
+                                📊 Comparación de Cantidades
+                            </h2>
+                            
+                            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                                <thead>
+                                    <tr style="background-color: #4A86E8; color: #ffffff;">
+                                        <th style="padding: 15px; text-align: left; border: 1px solid #dee2e6;">Concepto</th>
+                                        <th style="padding: 15px; text-align: center; border: 1px solid #dee2e6;">Cantidad</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; font-weight: bold;">
+                                            Cantidad Solicitada (OT)
+                                        </td>
+                                        <td style="padding: 12px; background-color: #ffffff; border: 1px solid #dee2e6; text-align: center; font-size: 18px; font-weight: bold;">
+                                            {{CANTIDAD_SOLICITADA}}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 12px; background-color: #f8f9fa; border: 1px solid #dee2e6; font-weight: bold;">
+                                            Cantidad Preparada (OTA)
+                                        </td>
+                                        <td style="padding: 12px; background-color: #ffffff; border: 1px solid #dee2e6; text-align: center; font-size: 18px; font-weight: bold;">
+                                            {{CANTIDAD_PREPARADA}}
+                                        </td>
+                                    </tr>
+                                    <tr style="background-color: #fff3cd;">
+                                        <td style="padding: 12px; border: 1px solid #ffc107; font-weight: bold; color: #856404;">
+                                            Diferencia Absoluta
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ffc107; text-align: center; font-size: 20px; font-weight: bold; color: #856404;">
+                                            {{DIFERENCIA_ABSOLUTA}} unidades
+                                        </td>
+                                    </tr>
+                                    <tr style="background-color: #f8d7da;">
+                                        <td style="padding: 12px; border: 1px solid #f5c6cb; font-weight: bold; color: #721c24;">
+                                            Diferencia Porcentual
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #f5c6cb; text-align: center; font-size: 20px; font-weight: bold; color: #721c24;">
+                                            {{DIFERENCIA_PORCENTUAL}}%
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Análisis -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #e7f3ff; border-left: 4px solid #2196F3; padding: 20px; border-radius: 4px;">
+                                <h3 style="color: #004085; margin: 0 0 10px 0; font-size: 16px;">
+                                    📈 Análisis
+                                </h3>
+                                <p style="margin: 0; color: #004085; line-height: 1.6;">
+                                    {{TIPO_DIFERENCIA}}
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Acción requerida -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <div style="background-color: #d4edda; border-left: 4px solid #28a745; padding: 20px; border-radius: 4px;">
+                                <h3 style="color: #155724; margin: 0 0 10px 0; font-size: 16px;">
+                                    ✅ Acción Requerida
+                                </h3>
+                                <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #155724; line-height: 1.8;">
+                                    <li>Revisar la preparación en el área de Operaciones</li>
+                                    <li>Verificar si hay productos dañados o faltantes</li>
+                                    <li>Ajustar cantidades en el sistema si es necesario</li>
+                                    <li>Coordinar con Abastecimiento si se requiere reposición</li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Información adicional -->
+                    <tr>
+                        <td style="padding: 0 30px 30px 30px;">
+                            <table style="width: 100%; border-collapse: collapse; background-color: #f8f9fa; border-radius: 4px;">
+                                <tr>
+                                    <td style="padding: 15px;">
+                                        <p style="margin: 0; color: #6c757d; font-size: 14px;">
+                                            <strong>📅 Fecha de Detección:</strong> {{FECHA_DETECCION}}
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 15px; border-top: 1px solid #dee2e6;">
+                                        <p style="margin: 0; color: #6c757d; font-size: 14px;">
+                                            <strong>🔗 Umbral Configurado:</strong> 2% de diferencia aceptable
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #343a40; padding: 20px; text-align: center;">
+                            <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 14px;">
+                                Sistema de Gestión de Órdenes de Transferencia
+                            </p>
+                            <p style="margin: 0; color: #adb5bd; font-size: 12px;">
+                                Este es un mensaje automático. Por favor no responder a este correo.
+                            </p>
+                            <p style="margin: 10px 0 0 0; color: #adb5bd; font-size: 12px;">
+                                Para soporte técnico, contactar al equipo de IT
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

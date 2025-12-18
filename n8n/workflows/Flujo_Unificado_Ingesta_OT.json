@@ -1,0 +1,718 @@
+{
+  "name": "🔄 Flujo Unificado - Ingesta Completa OT",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "name": "🕐 Disparador_Cada_10min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 460],
+      "id": "node-trigger-unified"
+    },
+    {
+      "parameters": {},
+      "name": "🚀 Inicio_Procesamiento",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [460, 460],
+      "id": "node-start"
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OT",
+          "mode": "name"
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "name": "📊 Leer_OT",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 240],
+      "id": "node-read-ot",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTA",
+          "mode": "name"
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "name": "📊 Leer_OTA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 360],
+      "id": "node-read-ota",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTADET",
+          "mode": "name"
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "name": "📊 Leer_OTADET",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 480],
+      "id": "node-read-otadet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTF",
+          "mode": "name"
+        },
+        "options": {
+          "rangeDefinition": "detectAutomatically"
+        }
+      },
+      "name": "📊 Leer_OTF",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [680, 600],
+      "id": "node-read-otf",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PROCESAMIENTO UNIFICADO DE TODAS LAS HOJAS\n// ============================================================================\n\n// Obtener datos de todas las entradas\nconst todasLasEntradas = $input.all();\n\nconsole.log('=== INICIO PROCESAMIENTO UNIFICADO ===');\nconsole.log('Total entradas recibidas:', todasLasEntradas.length);\n\n// Separar por fuente (cada entrada viene de un nodo diferente)\nconst lecturaOT = [];\nconst lecturaOTA = [];\nconst lecturaOTADET = [];\nconst lecturaOTF = [];\n\n// Los datos vienen en el orden: [0]=OT, [1]=OTA, [2]=OTADET, [3]=OTF\nif (todasLasEntradas.length > 0) {\n  // Entrada 0: OT\n  const inputOT = $input.all(0);\n  lecturaOT.push(...inputOT);\n}\n\nif (todasLasEntradas.length > 1) {\n  // Entrada 1: OTA  \n  const inputOTA = $input.all(1);\n  lecturaOTA.push(...inputOTA);\n}\n\nif (todasLasEntradas.length > 2) {\n  // Entrada 2: OTADET\n  const inputOTADET = $input.all(2);\n  lecturaOTADET.push(...inputOTADET);\n}\n\nif (todasLasEntradas.length > 3) {\n  // Entrada 3: OTF\n  const inputOTF = $input.all(3);\n  lecturaOTF.push(...inputOTF);\n}\n\nconsole.log('=== PROCESAMIENTO UNIFICADO ===');\nconsole.log('Items OT:', lecturaOT.length);\nconsole.log('Items OTA:', lecturaOTA.length);\nconsole.log('Items OTADET:', lecturaOTADET.length);\nconsole.log('Items OTF:', lecturaOTF.length);\n\nconst resultados = [];\n\n// ============================================================================\n// PROCESAR OT (SOLICITUD)\n// ============================================================================\nfor (let i = 0; i < lecturaOT.length; i++) {\n  try {\n    const datos = lecturaOT[i].json;\n    \n    // Saltar si no tiene datos válidos\n    if (!datos.id_ot || !datos.sku) {\n      console.log('⚠️ OT sin id_ot o sku, omitiendo');\n      continue;\n    }\n    \n    const registro = {\n      id_ot: String(datos.id_ot).trim(),\n      sku: String(datos.sku).trim(),\n      mlc: datos.mlc ? String(datos.mlc).trim() : null,\n      cliente: datos.cliente ? String(datos.cliente).trim() : null,\n      fecha_solicitud: datos.fecha_solicitud || new Date().toISOString(),\n      fecha_transferencia_comprometida: datos.fecha_transferencia_comprometida || null,\n      cantidad_solicitada: parseFloat(datos.cantidad_solicitada) || 0,\n      estado: 'Solicitado',\n      tipo: 'OT',\n      hoja_origen: 'OT',\n      fila_sheet: i + 2\n    };\n    \n    console.log('✅ OT preparado:', registro.id_ot, '-', registro.sku);\n    resultados.push({ json: registro });\n    \n  } catch (error) {\n    console.error('❌ Error procesando OT:', error.message);\n  }\n}\n\n// ============================================================================\n// PROCESAR OTA (PREPARACIÓN)\n// ============================================================================\nfor (let i = 0; i < lecturaOTA.length; i++) {\n  try {\n    const datos = lecturaOTA[i].json;\n    \n    if (!datos.id_ot || !datos.sku) {\n      console.log('⚠️ OTA sin id_ot o sku, omitiendo');\n      continue;\n    }\n    \n    const registro = {\n      id_ot: String(datos.id_ot).trim(),\n      sku: String(datos.sku).trim(),\n      fecha_preparacion: datos.fecha_preparacion || new Date().toISOString(),\n      cantidad_preparada: parseFloat(datos.cantidad_preparada) || 0,\n      estado: 'Preparado',\n      tipo: 'OTA',\n      hoja_origen: 'OTA',\n      fila_sheet: i + 2\n    };\n    \n    console.log('✅ OTA preparado:', registro.id_ot, '-', registro.sku);\n    resultados.push({ json: registro });\n    \n  } catch (error) {\n    console.error('❌ Error procesando OTA:', error.message);\n  }\n}\n\n// ============================================================================\n// PROCESAR OTADET (DETALLE EAN)\n// ============================================================================\nfor (let i = 0; i < lecturaOTADET.length; i++) {\n  try {\n    const datos = lecturaOTADET[i].json;\n    \n    if (!datos.id_ot || !datos.sku || !datos.ean) {\n      console.log('⚠️ OTADET sin id_ot, sku o ean, omitiendo');\n      continue;\n    }\n    \n    const registro = {\n      id_ot: String(datos.id_ot).trim(),\n      sku: String(datos.sku).trim(),\n      ean: String(datos.ean).trim(),\n      cantidad_preparada_ean: parseFloat(datos.cantidad_preparada_ean) || 0,\n      tipo: 'OTADET',\n      hoja_origen: 'OTADET',\n      fila_sheet: i + 2\n    };\n    \n    console.log('✅ OTADET preparado:', registro.id_ot, '-', registro.sku, '-', registro.ean);\n    resultados.push({ json: registro });\n    \n  } catch (error) {\n    console.error('❌ Error procesando OTADET:', error.message);\n  }\n}\n\n// ============================================================================\n// PROCESAR OTF (RECEPCIÓN)\n// ============================================================================\nfor (let i = 0; i < lecturaOTF.length; i++) {\n  try {\n    const datos = lecturaOTF[i].json;\n    \n    if (!datos.id_ot || !datos.sku) {\n      console.log('⚠️ OTF sin id_ot o sku, omitiendo');\n      continue;\n    }\n    \n    const registro = {\n      id_ot: String(datos.id_ot).trim(),\n      sku: String(datos.sku).trim(),\n      fecha_recepcion: datos.fecha_recepcion || new Date().toISOString(),\n      cantidad_recepcionada: parseFloat(datos.cantidad_recepcionada) || 0,\n      tipo: 'OTF',\n      hoja_origen: 'OTF',\n      fila_sheet: i + 2\n    };\n    \n    console.log('✅ OTF preparado:', registro.id_ot, '-', registro.sku);\n    resultados.push({ json: registro });\n    \n  } catch (error) {\n    console.error('❌ Error procesando OTF:', error.message);\n  }\n}\n\n// ============================================================================\n// RESULTADO FINAL\n// ============================================================================\nconsole.log('=== RESUMEN PROCESAMIENTO ===');\nconsole.log('Total registros válidos:', resultados.length);\n\nif (resultados.length === 0) {\n  console.log('⚠️ No hay datos válidos para procesar');\n  return [{\n    json: {\n      tiene_datos: false,\n      mensaje: 'No hay datos válidos en ninguna hoja',\n      timestamp: new Date().toISOString(),\n      estadisticas: {\n        OT: 0,\n        OTA: 0,\n        OTADET: 0,\n        OTF: 0\n      }\n    }\n  }];\n}\n\nconsole.log('=== FIN PROCESAMIENTO ===');\nreturn resultados;"
+      },
+      "name": "🔧 Procesar_Todas_Las_Hojas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420],
+      "id": "node-process-all"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.tiene_datos }}",
+              "operation": "notEqual",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "name": "❓ Hay_Datos_Para_Procesar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 420],
+      "id": "node-if-has-data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tipo }}",
+              "value2": "OT"
+            }
+          ]
+        }
+      },
+      "name": "❓ Es_OT",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 240],
+      "id": "node-if-ot"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tipo }}",
+              "value2": "OTA"
+            }
+          ]
+        }
+      },
+      "name": "❓ Es_OTA",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 360],
+      "id": "node-if-ota"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tipo }}",
+              "value2": "OTADET"
+            }
+          ]
+        }
+      },
+      "name": "❓ Es_OTADET",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 480],
+      "id": "node-if-otadet"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tipo }}",
+              "value2": "OTF"
+            }
+          ]
+        }
+      },
+      "name": "❓ Es_OTF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 600],
+      "id": "node-if-otf"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_transfer_order",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "💾 Guardar_OT_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 240],
+      "id": "node-save-ot",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_transfer_order",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "💾 Guardar_OTA_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 360],
+      "id": "node-save-ota",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/transfer_orders_detalle_ean",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "💾 Guardar_OTADET_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 480],
+      "id": "node-save-otadet",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/rpc/upsert_transfer_order",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "💾 Guardar_OTF_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 600],
+      "id": "node-save-otf",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hoja_origen }}",
+              "value2": "OT"
+            }
+          ]
+        }
+      },
+      "name": "❓ Limpiar_OT",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1780, 240],
+      "id": "node-if-clean-ot"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hoja_origen }}",
+              "value2": "OTA"
+            }
+          ]
+        }
+      },
+      "name": "❓ Limpiar_OTA",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1780, 360],
+      "id": "node-if-clean-ota"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hoja_origen }}",
+              "value2": "OTADET"
+            }
+          ]
+        }
+      },
+      "name": "❓ Limpiar_OTADET",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1780, 480],
+      "id": "node-if-clean-otadet"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.hoja_origen }}",
+              "value2": "OTF"
+            }
+          ]
+        }
+      },
+      "name": "❓ Limpiar_OTF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1780, 600],
+      "id": "node-if-clean-otf"
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OT",
+          "mode": "name"
+        },
+        "options": {
+          "deleteAllData": true
+        }
+      },
+      "name": "🗑️ Borrar_Hoja_OT",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 240],
+      "id": "node-delete-ot",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "executeOnce": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTA",
+          "mode": "name"
+        },
+        "options": {
+          "deleteAllData": true
+        }
+      },
+      "name": "🗑️ Borrar_Hoja_OTA",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 360],
+      "id": "node-delete-ota",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "executeOnce": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTADET",
+          "mode": "name"
+        },
+        "options": {
+          "deleteAllData": true
+        }
+      },
+      "name": "🗑️ Borrar_Hoja_OTADET",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 480],
+      "id": "node-delete-otadet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "executeOnce": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "documentId": {
+          "__rl": true,
+          "value": "TU_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "OTF",
+          "mode": "name"
+        },
+        "options": {
+          "deleteAllData": true
+        }
+      },
+      "name": "🗑️ Borrar_Hoja_OTF",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [2000, 600],
+      "id": "node-delete-otf",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TU_CREDENTIAL_ID",
+          "name": "Google Sheets - Sistema OT"
+        }
+      },
+      "executeOnce": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PREPARAR LOG FINAL\n// ============================================================================\n\nconst procesamiento = $('🔧 Procesar_Todas_Las_Hojas').all();\n\nconsole.log('=== PREPARANDO LOG FINAL ===');\nconsole.log('Items procesados:', procesamiento.length);\n\n// Si no hay datos\nif (procesamiento.length === 1 && procesamiento[0].json.tiene_datos === false) {\n  return [{\n    json: {\n      tipo_operacion: 'Ingesta_Unificada',\n      flujo_n8n: 'Flujo_Unificado_Ingesta_OT',\n      exitoso: true,\n      total_registros: 0,\n      registros_exitosos: 0,\n      registros_fallidos: 0,\n      mensaje: 'No hay datos nuevos para procesar en ninguna hoja',\n      datos_adicionales: JSON.stringify({\n        estadisticas: procesamiento[0].json.estadisticas || {},\n        timestamp: new Date().toISOString()\n      })\n    }\n  }];\n}\n\n// Contar por tipo\nconst estadisticas = {\n  OT: { exitosos: 0, fallidos: 0 },\n  OTA: { exitosos: 0, fallidos: 0 },\n  OTADET: { exitosos: 0, fallidos: 0 },\n  OTF: { exitosos: 0, fallidos: 0 }\n};\n\nfor (const item of procesamiento) {\n  const tipo = item.json.tipo;\n  if (tipo && estadisticas[tipo]) {\n    if (item.json.error) {\n      estadisticas[tipo].fallidos++;\n    } else {\n      estadisticas[tipo].exitosos++;\n    }\n  }\n}\n\nconst totalExitosos = Object.values(estadisticas).reduce((sum, s) => sum + s.exitosos, 0);\nconst totalFallidos = Object.values(estadisticas).reduce((sum, s) => sum + s.fallidos, 0);\nconst totalRegistros = totalExitosos + totalFallidos;\n\nconst log = {\n  tipo_operacion: 'Ingesta_Unificada',\n  flujo_n8n: 'Flujo_Unificado_Ingesta_OT',\n  exitoso: totalFallidos === 0,\n  total_registros: totalRegistros,\n  registros_exitosos: totalExitosos,\n  registros_fallidos: totalFallidos,\n  mensaje: `Ingesta completada: ${totalRegistros} registros (${totalExitosos} exitosos, ${totalFallidos} fallidos)`,\n  datos_adicionales: JSON.stringify({\n    desglose: estadisticas,\n    timestamp: new Date().toISOString()\n  })\n};\n\nconsole.log('Log preparado:', log);\nconsole.log('=== FIN LOG ===');\n\nreturn [{ json: log }];"
+      },
+      "name": "📝 Preparar_Log_Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 420],
+      "id": "node-prepare-log"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/logs_integracion",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "📊 Guardar_Log_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2440, 420],
+      "id": "node-save-log",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log cuando no hay datos\nreturn [{\n  json: {\n    tipo_operacion: 'Ingesta_Unificada',\n    flujo_n8n: 'Flujo_Unificado_Ingesta_OT',\n    exitoso: true,\n    total_registros: 0,\n    registros_exitosos: 0,\n    registros_fallidos: 0,\n    mensaje: 'Ejecución completada sin datos para procesar',\n    datos_adicionales: JSON.stringify({\n      timestamp: new Date().toISOString()\n    })\n  }\n}];"
+      },
+      "name": "📝 Log_Sin_Datos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 540],
+      "id": "node-log-no-data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/logs_integracion",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "📊 Guardar_Log_Sin_Datos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 540],
+      "id": "node-save-log-no-data",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "🕐 Disparador_Cada_10min": {
+      "main": [[{"node": "🚀 Inicio_Procesamiento", "type": "main", "index": 0}]]
+    },
+    "🚀 Inicio_Procesamiento": {
+      "main": [
+        [
+          {"node": "📊 Leer_OT", "type": "main", "index": 0},
+          {"node": "📊 Leer_OTA", "type": "main", "index": 0},
+          {"node": "📊 Leer_OTADET", "type": "main", "index": 0},
+          {"node": "📊 Leer_OTF", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "📊 Leer_OT": {
+      "main": [[{"node": "🔧 Procesar_Todas_Las_Hojas", "type": "main", "index": 0}]]
+    },
+    "📊 Leer_OTA": {
+      "main": [[{"node": "🔧 Procesar_Todas_Las_Hojas", "type": "main", "index": 1}]]
+    },
+    "📊 Leer_OTADET": {
+      "main": [[{"node": "🔧 Procesar_Todas_Las_Hojas", "type": "main", "index": 2}]]
+    },
+    "📊 Leer_OTF": {
+      "main": [[{"node": "🔧 Procesar_Todas_Las_Hojas", "type": "main", "index": 3}]]
+    },
+    "🔧 Procesar_Todas_Las_Hojas": {
+      "main": [[{"node": "❓ Hay_Datos_Para_Procesar", "type": "main", "index": 0}]]
+    },
+    "❓ Hay_Datos_Para_Procesar": {
+      "main": [
+        [
+          {"node": "❓ Es_OT", "type": "main", "index": 0},
+          {"node": "❓ Es_OTA", "type": "main", "index": 0},
+          {"node": "❓ Es_OTADET", "type": "main", "index": 0},
+          {"node": "❓ Es_OTF", "type": "main", "index": 0}
+        ],
+        [
+          {"node": "📝 Log_Sin_Datos", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "❓ Es_OT": {
+      "main": [[{"node": "💾 Guardar_OT_Supabase", "type": "main", "index": 0}]]
+    },
+    "❓ Es_OTA": {
+      "main": [[{"node": "💾 Guardar_OTA_Supabase", "type": "main", "index": 0}]]
+    },
+    "❓ Es_OTADET": {
+      "main": [[{"node": "💾 Guardar_OTADET_Supabase", "type": "main", "index": 0}]]
+    },
+    "❓ Es_OTF": {
+      "main": [[{"node": "💾 Guardar_OTF_Supabase", "type": "main", "index": 0}]]
+    },
+    "💾 Guardar_OT_Supabase": {
+      "main": [[{"node": "❓ Limpiar_OT", "type": "main", "index": 0}]]
+    },
+    "💾 Guardar_OTA_Supabase": {
+      "main": [[{"node": "❓ Limpiar_OTA", "type": "main", "index": 0}]]
+    },
+    "💾 Guardar_OTADET_Supabase": {
+      "main": [[{"node": "❓ Limpiar_OTADET", "type": "main", "index": 0}]]
+    },
+    "💾 Guardar_OTF_Supabase": {
+      "main": [[{"node": "❓ Limpiar_OTF", "type": "main", "index": 0}]]
+    },
+    "❓ Limpiar_OT": {
+      "main": [[{"node": "🗑️ Borrar_Hoja_OT", "type": "main", "index": 0}]]
+    },
+    "❓ Limpiar_OTA": {
+      "main": [[{"node": "🗑️ Borrar_Hoja_OTA", "type": "main", "index": 0}]]
+    },
+    "❓ Limpiar_OTADET": {
+      "main": [[{"node": "🗑️ Borrar_Hoja_OTADET", "type": "main", "index": 0}]]
+    },
+    "❓ Limpiar_OTF": {
+      "main": [[{"node": "🗑️ Borrar_Hoja_OTF", "type": "main", "index": 0}]]
+    },
+    "🗑️ Borrar_Hoja_OT": {
+      "main": [[{"node": "📝 Preparar_Log_Final", "type": "main", "index": 0}]]
+    },
+    "🗑️ Borrar_Hoja_OTA": {
+      "main": [[{"node": "📝 Preparar_Log_Final", "type": "main", "index": 0}]]
+    },
+    "🗑️ Borrar_Hoja_OTADET": {
+      "main": [[{"node": "📝 Preparar_Log_Final", "type": "main", "index": 0}]]
+    },
+    "🗑️ Borrar_Hoja_OTF": {
+      "main": [[{"node": "📝 Preparar_Log_Final", "type": "main", "index": 0}]]
+    },
+    "📝 Preparar_Log_Final": {
+      "main": [[{"node": "📊 Guardar_Log_Supabase", "type": "main", "index": 0}]]
+    },
+    "📝 Log_Sin_Datos": {
+      "main": [[{"node": "📊 Guardar_Log_Sin_Datos", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{"name": "Producción", "id": "1"}],
+  "triggerCount": 1,
+  "updatedAt": "2024-11-28T00:00:00.000Z",
+  "versionId": "2.0.1"
+}

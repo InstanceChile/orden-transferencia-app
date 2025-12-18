@@ -1,0 +1,450 @@
+{
+  "name": "🔍 Flujo Validaciones y Alertas OT",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "name": "🕐 Disparador_Cada_15min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 400],
+      "id": "node-trigger-validation"
+    },
+    {
+      "parameters": {},
+      "name": "🚀 Inicio_Validaciones",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [460, 400],
+      "id": "node-start-validation"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM validar_diferencia_ot_ota(0.02)",
+        "additionalFields": {}
+      },
+      "name": "🔍 Validar_Diferencias_OT_OTA",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [680, 280],
+      "id": "node-validate-ot-ota",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM validar_diferencia_ota_otf(0.05)",
+        "additionalFields": {}
+      },
+      "name": "🔍 Validar_Diferencias_OTA_OTF",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [680, 400],
+      "id": "node-validate-ota-otf",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM validar_otadet_vs_pim()",
+        "additionalFields": {}
+      },
+      "name": "🔍 Validar_OTADET_PIM",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [680, 520],
+      "id": "node-validate-otadet-pim",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.supera_umbral }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "⚠️ Tiene_Dif_OT_OTA",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 280],
+      "id": "node-if-diff-ot-ota"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.supera_umbral }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "⚠️ Tiene_Dif_OTA_OTF",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "id": "node-if-diff-ota-otf"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.tipo_inconsistencia }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "name": "⚠️ Tiene_Inconsistencia",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [900, 520],
+      "id": "node-if-inconsistencia"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PREPARAR ALERTA: DIFERENCIA OT vs OTA\n// ============================================================================\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{\n    json: {\n      tiene_alertas: false,\n      mensaje: 'No hay diferencias OT-OTA que superen el umbral',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconsole.log('=== PREPARANDO ALERTAS OT vs OTA ===');\nconsole.log('Total diferencias detectadas:', items.length);\n\nconst alertas = [];\n\nfor (const item of items) {\n  const datos = item.json;\n  \n  const difPorcentual = (datos.diferencia_relativa * 100).toFixed(2);\n  const difAbsoluta = datos.diferencia_absoluta;\n  const severidad = difPorcentual > 10 ? 'Alta' : difPorcentual > 5 ? 'Media' : 'Baja';\n  \n  const alerta = {\n    id_ot: datos.id_ot,\n    sku: datos.sku,\n    tipo_alerta: 'Diferencia_OT_OTA',\n    severidad: severidad,\n    estado: 'Generada',\n    asunto: `🚨 [ALERTA OT→OTA] Diferencia ${difPorcentual}% – OT ${datos.id_ot}`,\n    mensaje: `Se detectó una diferencia del ${difPorcentual}% entre cantidad solicitada y preparada.\\n\\nDetalles:\\n- ID OT: ${datos.id_ot}\\n- SKU: ${datos.sku}\\n- Cantidad Solicitada: ${datos.cantidad_solicitada}\\n- Cantidad Preparada: ${datos.cantidad_preparada}\\n- Diferencia Absoluta: ${difAbsoluta} unidades\\n- Diferencia Porcentual: ${difPorcentual}%\\n\\n⚠️ Acción sugerida: Revisar preparación en operaciones y ajustar cantidades si es necesario.`,\n    datos_alerta: JSON.stringify({\n      cantidad_solicitada: datos.cantidad_solicitada,\n      cantidad_preparada: datos.cantidad_preparada,\n      diferencia_absoluta: difAbsoluta,\n      diferencia_porcentual: difPorcentual,\n      tipo_diferencia: datos.cantidad_preparada > datos.cantidad_solicitada ? 'Sobre-preparación' : 'Sub-preparación'\n    }),\n    destinatarios: ['abastecimiento@empresa.com', 'operaciones@empresa.com']\n  };\n  \n  console.log(`✅ Alerta preparada: ${alerta.id_ot} - ${alerta.sku} (${difPorcentual}%)`);\n  alertas.push({ json: alerta });\n}\n\nconsole.log(`Total alertas OT-OTA preparadas: ${alertas.length}`);\n\nreturn alertas;"
+      },
+      "name": "📧 Prep_Alerta_OT_OTA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 280],
+      "id": "node-prep-alert-ot-ota"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PREPARAR ALERTA: DIFERENCIA OTA vs OTF\n// ============================================================================\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{\n    json: {\n      tiene_alertas: false,\n      mensaje: 'No hay diferencias OTA-OTF que superen el umbral',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconsole.log('=== PREPARANDO ALERTAS OTA vs OTF ===');\nconsole.log('Total diferencias detectadas:', items.length);\n\nconst alertas = [];\n\nfor (const item of items) {\n  const datos = item.json;\n  \n  const difPorcentual = (datos.diferencia_relativa * 100).toFixed(2);\n  const difAbsoluta = datos.diferencia_absoluta;\n  const severidad = difPorcentual > 10 ? 'Alta' : difPorcentual > 5 ? 'Media' : 'Baja';\n  \n  const alerta = {\n    id_ot: datos.id_ot,\n    sku: datos.sku,\n    tipo_alerta: 'Diferencia_OTA_OTF',\n    severidad: severidad,\n    estado: 'Generada',\n    asunto: `🚨 [ALERTA OTA→OTF] Diferencia ${difPorcentual}% en recepción – OT ${datos.id_ot}`,\n    mensaje: `Se detectó una diferencia del ${difPorcentual}% entre cantidad preparada y recepcionada.\\n\\nDetalles:\\n- ID OT: ${datos.id_ot}\\n- SKU: ${datos.sku}\\n- Cantidad Preparada: ${datos.cantidad_preparada}\\n- Cantidad Recepcionada: ${datos.cantidad_recepcionada}\\n- Diferencia Absoluta: ${difAbsoluta} unidades\\n- Diferencia Porcentual: ${difPorcentual}%\\n\\n⚠️ Acción sugerida: Revisar recepción en destino y verificar posibles novedades en tránsito.`,\n    datos_alerta: JSON.stringify({\n      cantidad_preparada: datos.cantidad_preparada,\n      cantidad_recepcionada: datos.cantidad_recepcionada,\n      diferencia_absoluta: difAbsoluta,\n      diferencia_porcentual: difPorcentual,\n      tipo_diferencia: datos.cantidad_recepcionada > datos.cantidad_preparada ? 'Sobre-recepción' : 'Sub-recepción'\n    }),\n    destinatarios: ['operaciones@empresa.com', 'full@empresa.com']\n  };\n  \n  console.log(`✅ Alerta preparada: ${alerta.id_ot} - ${alerta.sku} (${difPorcentual}%)`);\n  alertas.push({ json: alerta });\n}\n\nconsole.log(`Total alertas OTA-OTF preparadas: ${alertas.length}`);\n\nreturn alertas;"
+      },
+      "name": "📧 Prep_Alerta_OTA_OTF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400],
+      "id": "node-prep-alert-ota-otf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PREPARAR ALERTA: INCONSISTENCIA OTADET vs PIM\n// ============================================================================\n\nconst items = $input.all();\n\nif (!items || items.length === 0) {\n  return [{\n    json: {\n      tiene_alertas: false,\n      mensaje: 'No hay inconsistencias OTADET-PIM',\n      timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconsole.log('=== PREPARANDO ALERTAS OTADET vs PIM ===');\nconsole.log('Total inconsistencias detectadas:', items.length);\n\nconst alertas = [];\n\nfor (const item of items) {\n  const datos = item.json;\n  \n  const tipoInconsistencia = datos.tipo_inconsistencia;\n  const severidad = tipoInconsistencia === 'EAN_No_Existe_PIM' ? 'Alta' : 'Media';\n  \n  let mensajeDetalle = '';\n  if (tipoInconsistencia === 'EAN_No_Existe_PIM') {\n    mensajeDetalle = 'El EAN registrado en OTADET NO existe en el catálogo PIM';\n  } else if (tipoInconsistencia === 'SKU_EAN_No_Coincide') {\n    mensajeDetalle = 'El EAN registrado NO corresponde al SKU según el catálogo PIM';\n  }\n  \n  const alerta = {\n    id_ot: datos.id_ot,\n    sku: datos.sku,\n    tipo_alerta: 'Inconsistencia_OTADET_PIM',\n    severidad: severidad,\n    estado: 'Generada',\n    asunto: `🚨 [ALERTA OTADET↔PIM] ${tipoInconsistencia} – OT ${datos.id_ot}`,\n    mensaje: `Se detectó una inconsistencia entre OTADET y el catálogo PIM.\\n\\nDetalles:\\n- ID OT: ${datos.id_ot}\\n- SKU: ${datos.sku}\\n- EAN: ${datos.ean}\\n- Tipo de inconsistencia: ${tipoInconsistencia}\\n- Descripción: ${mensajeDetalle}\\n\\n⚠️ Acción sugerida: Verificar y actualizar el catálogo PIM o corregir el EAN en OTADET.`,\n    datos_alerta: JSON.stringify({\n      ean: datos.ean,\n      tipo_inconsistencia: tipoInconsistencia,\n      cantidad_preparada_ean: datos.cantidad_preparada_ean\n    }),\n    destinatarios: ['abastecimiento@empresa.com', 'sistemas@empresa.com']\n  };\n  \n  console.log(`✅ Alerta preparada: ${alerta.id_ot} - ${alerta.sku} - ${alerta.tipo_alerta}`);\n  alertas.push({ json: alerta });\n}\n\nconsole.log(`Total alertas OTADET-PIM preparadas: ${alertas.length}`);\n\nreturn alertas;"
+      },
+      "name": "📧 Prep_Alerta_OTADET_PIM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 520],
+      "id": "node-prep-alert-otadet-pim"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "name": "🔀 Unificar_Alertas",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 400],
+      "id": "node-merge-alerts"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.tiene_alertas }}",
+              "operation": "notEqual",
+              "value2": false
+            }
+          ]
+        }
+      },
+      "name": "❓ Hay_Alertas_Para_Guardar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1560, 400],
+      "id": "node-if-has-alerts"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "historial_alertas_ot",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "id_ot",
+              "fieldValue": "={{ $json.id_ot }}"
+            },
+            {
+              "fieldId": "sku",
+              "fieldValue": "={{ $json.sku }}"
+            },
+            {
+              "fieldId": "tipo_alerta",
+              "fieldValue": "={{ $json.tipo_alerta }}"
+            },
+            {
+              "fieldId": "severidad",
+              "fieldValue": "={{ $json.severidad }}"
+            },
+            {
+              "fieldId": "estado",
+              "fieldValue": "={{ $json.estado }}"
+            },
+            {
+              "fieldId": "asunto",
+              "fieldValue": "={{ $json.asunto }}"
+            },
+            {
+              "fieldId": "mensaje",
+              "fieldValue": "={{ $json.mensaje }}"
+            },
+            {
+              "fieldId": "datos_alerta",
+              "fieldValue": "={{ $json.datos_alerta }}"
+            },
+            {
+              "fieldId": "destinatarios",
+              "fieldValue": "={{ $json.destinatarios }}"
+            }
+          ]
+        }
+      },
+      "name": "💾 Guardar_Alerta_Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1780, 400],
+      "id": "node-save-alert",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "sendTo": "={{ $json.destinatarios.join(',') }}",
+        "subject": "={{ $json.asunto }}",
+        "emailType": "html",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff;\">\n  <!-- Header -->\n  <div style=\"background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;\">\n    <h1 style=\"color: #ffffff; margin: 0; font-size: 24px;\">🚨 Sistema de Órdenes de Transferencia</h1>\n    <p style=\"color: #f0f0f0; margin: 10px 0 0 0; font-size: 14px;\">Notificación Automática</p>\n  </div>\n\n  <!-- Alert Box -->\n  <div style=\"background: {{ $json.severidad === 'Alta' ? '#fff3cd' : $json.severidad === 'Media' ? '#d1ecf1' : '#d4edda' }}; border-left: 5px solid {{ $json.severidad === 'Alta' ? '#ffc107' : $json.severidad === 'Media' ? '#17a2b8' : '#28a745' }}; padding: 20px; margin: 20px;\">\n    <h2 style=\"color: #333; margin-top: 0; font-size: 18px;\">{{ $json.tipo_alerta.replace(/_/g, ' ') }}</h2>\n    <p style=\"color: #666; font-size: 14px; margin: 5px 0;\"><strong>Severidad:</strong> <span style=\"color: {{ $json.severidad === 'Alta' ? '#dc3545' : $json.severidad === 'Media' ? '#ffc107' : '#28a745' }}; font-weight: bold;\">{{ $json.severidad }}</span></p>\n  </div>\n\n  <!-- Details -->\n  <div style=\"padding: 20px; margin: 0 20px; background: #f8f9fa; border-radius: 8px;\">\n    <h3 style=\"color: #333; margin-top: 0;\">📋 Detalles de la Orden</h3>\n    <table style=\"width: 100%; border-collapse: collapse;\">\n      <tr>\n        <td style=\"padding: 10px; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #495057;\">ID OT:</td>\n        <td style=\"padding: 10px; border-bottom: 1px solid #dee2e6; color: #212529;\">{{ $json.id_ot }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 10px; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #495057;\">SKU:</td>\n        <td style=\"padding: 10px; border-bottom: 1px solid #dee2e6; color: #212529;\">{{ $json.sku }}</td>\n      </tr>\n    </table>\n  </div>\n\n  <!-- Message -->\n  <div style=\"padding: 20px; margin: 20px;\">\n    <h3 style=\"color: #333;\">📝 Descripción del Problema</h3>\n    <div style=\"background: #ffffff; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px;\">\n      <p style=\"line-height: 1.6; color: #495057; white-space: pre-wrap; margin: 0;\">{{ $json.mensaje }}</p>\n    </div>\n  </div>\n\n  <!-- Action Box -->\n  <div style=\"margin: 20px; padding: 20px; background: #e7f3ff; border-radius: 8px; border: 1px solid #b3d9ff;\">\n    <p style=\"margin: 0; color: #004085; font-size: 14px;\">\n      <strong>💡 Acción requerida:</strong> Por favor revisar y tomar las medidas correspondientes según los procedimientos establecidos.\n    </p>\n  </div>\n\n  <!-- Footer -->\n  <div style=\"margin-top: 30px; padding: 20px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;\">\n    <p style=\"margin: 0; font-size: 12px; color: #6c757d;\">Este es un mensaje automático del Sistema de Gestión de Órdenes de Transferencia</p>\n    <p style=\"margin: 10px 0 0 0; font-size: 11px; color: #adb5bd;\">Por favor no responder a este correo</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "name": "📧 Enviar_Email_Alerta",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2000, 400],
+      "id": "node-send-email",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "TU_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "historial_alertas_ot",
+        "updateKey": "id",
+        "filterType": "manual",
+        "matchBy": {
+          "values": [
+            {
+              "key": "id",
+              "value": "={{ $('💾 Guardar_Alerta_Supabase').item.json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "estado",
+              "fieldValue": "Notificada"
+            },
+            {
+              "fieldId": "fecha_notificacion",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "notificacion_exitosa",
+              "fieldValue": "={{ $json.error ? false : true }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "✅ Actualizar_Estado_Alerta",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2220, 400],
+      "id": "node-update-alert-status",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================================\n// PREPARAR LOG FINAL DE VALIDACIONES\n// ============================================================================\n\nconst alertasGuardadas = $('💾 Guardar_Alerta_Supabase') ? $('💾 Guardar_Alerta_Supabase').all() : [];\nconst emailsEnviados = $('📧 Enviar_Email_Alerta') ? $('📧 Enviar_Email_Alerta').all() : [];\n\nconsole.log('=== PREPARANDO LOG FINAL VALIDACIONES ===');\nconsole.log('Alertas guardadas:', alertasGuardadas.length);\nconsole.log('Emails enviados:', emailsEnviados.length);\n\nconst estadisticas = {\n  alertas_generadas: alertasGuardadas.length,\n  emails_enviados_exitosos: emailsEnviados.filter(e => !e.json.error).length,\n  emails_fallidos: emailsEnviados.filter(e => e.json.error).length\n};\n\nconst log = {\n  tipo_operacion: 'Validacion_Completa',\n  flujo_n8n: 'Flujo_Validaciones_Alertas',\n  exitoso: true,\n  total_registros: alertasGuardadas.length,\n  registros_exitosos: alertasGuardadas.length,\n  registros_fallidos: 0,\n  mensaje: `Validaciones completadas: ${alertasGuardadas.length} alertas generadas, ${estadisticas.emails_enviados_exitosos} notificaciones enviadas`,\n  datos_adicionales: JSON.stringify({\n    estadisticas: estadisticas,\n    timestamp: new Date().toISOString()\n  })\n};\n\nconsole.log('Log final preparado:', log);\nconsole.log('=== FIN PREPARACIÓN LOG VALIDACIONES ===');\n\nreturn [{ json: log }];"
+      },
+      "name": "📝 Preparar_Log_Validaciones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400],
+      "id": "node-prepare-log-validation"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "tableId": "logs_integracion",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tipo_operacion",
+              "fieldValue": "={{ $json.tipo_operacion }}"
+            },
+            {
+              "fieldId": "flujo_n8n",
+              "fieldValue": "={{ $json.flujo_n8n }}"
+            },
+            {
+              "fieldId": "exitoso",
+              "fieldValue": "={{ $json.exitoso }}"
+            },
+            {
+              "fieldId": "total_registros",
+              "fieldValue": "={{ $json.total_registros }}"
+            },
+            {
+              "fieldId": "registros_exitosos",
+              "fieldValue": "={{ $json.registros_exitosos }}"
+            },
+            {
+              "fieldId": "registros_fallidos",
+              "fieldValue": "={{ $json.registros_fallidos }}"
+            },
+            {
+              "fieldId": "mensaje",
+              "fieldValue": "={{ $json.mensaje }}"
+            },
+            {
+              "fieldId": "datos_adicionales",
+              "fieldValue": "={{ $json.datos_adicionales }}"
+            }
+          ]
+        }
+      },
+      "name": "📊 Guardar_Log_Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2660, 400],
+      "id": "node-save-log-validation",
+      "credentials": {
+        "supabaseApi": {
+          "id": "TU_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase - OT System"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "🕐 Disparador_Cada_15min": {
+      "main": [[{"node": "🚀 Inicio_Validaciones", "type": "main", "index": 0}]]
+    },
+    "🚀 Inicio_Validaciones": {
+      "main": [
+        [
+          {"node": "🔍 Validar_Diferencias_OT_OTA", "type": "main", "index": 0},
+          {"node": "🔍 Validar_Diferencias_OTA_OTF", "type": "main", "index": 0},
+          {"node": "🔍 Validar_OTADET_PIM", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "🔍 Validar_Diferencias_OT_OTA": {
+      "main": [[{"node": "⚠️ Tiene_Dif_OT_OTA", "type": "main", "index": 0}]]
+    },
+    "🔍 Validar_Diferencias_OTA_OTF": {
+      "main": [[{"node": "⚠️ Tiene_Dif_OTA_OTF", "type": "main", "index": 0}]]
+    },
+    "🔍 Validar_OTADET_PIM": {
+      "main": [[{"node": "⚠️ Tiene_Inconsistencia", "type": "main", "index": 0}]]
+    },
+    "⚠️ Tiene_Dif_OT_OTA": {
+      "main": [[{"node": "📧 Prep_Alerta_OT_OTA", "type": "main", "index": 0}]]
+    },
+    "⚠️ Tiene_Dif_OTA_OTF": {
+      "main": [[{"node": "📧 Prep_Alerta_OTA_OTF", "type": "main", "index": 0}]]
+    },
+    "⚠️ Tiene_Inconsistencia": {
+      "main": [[{"node": "📧 Prep_Alerta_OTADET_PIM", "type": "main", "index": 0}]]
+    },
+    "📧 Prep_Alerta_OT_OTA": {
+      "main": [[{"node": "🔀 Unificar_Alertas", "type": "main", "index": 0}]]
+    },
+    "📧 Prep_Alerta_OTA_OTF": {
+      "main": [[{"node": "🔀 Unificar_Alertas", "type": "main", "index": 1}]]
+    },
+    "📧 Prep_Alerta_OTADET_PIM": {
+      "main": [[{"node": "🔀 Unificar_Alertas", "type": "main", "index": 2}]]
+    },
+    "🔀 Unificar_Alertas": {
+      "main": [[{"node": "❓ Hay_Alertas_Para_Guardar", "type": "main", "index": 0}]]
+    },
+    "❓ Hay_Alertas_Para_Guardar": {
+      "main": [[{"node": "💾 Guardar_Alerta_Supabase", "type": "main", "index": 0}]]
+    },
+    "💾 Guardar_Alerta_Supabase": {
+      "main": [[{"node": "📧 Enviar_Email_Alerta", "type": "main", "index": 0}]]
+    },
+    "📧 Enviar_Email_Alerta": {
+      "main": [[{"node": "✅ Actualizar_Estado_Alerta", "type": "main", "index": 0}]]
+    },
+    "✅ Actualizar_Estado_Alerta": {
+      "main": [[{"node": "📝 Preparar_Log_Validaciones", "type": "main", "index": 0}]]
+    },
+    "📝 Preparar_Log_Validaciones": {
+      "main": [[{"node": "📊 Guardar_Log_Supabase", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [{"name": "Producción", "id": "1"}],
+  "triggerCount": 1,
+  "updatedAt": "2024-11-28T00:00:00.000Z",
+  "versionId": "2.0.0"
+}
+
