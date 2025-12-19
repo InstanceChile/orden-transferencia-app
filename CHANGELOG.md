@@ -7,6 +7,48 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [4.0.3] - 2024-12-19
+
+### 🐛 Corregido
+
+#### Carga OTA: Productos no incluidos ahora se actualizan a cantidad 0
+- **Problema**: Al cargar una OTA, si un producto de la OT no estaba en el archivo, su estado no cambiaba
+- **Causa**: Solo se actualizaban los productos explícitamente incluidos en el archivo de carga
+- **Solución**: Ahora al cargar una OTA:
+  - Los productos incluidos se actualizan con la cantidad indicada
+  - Los productos NO incluidos se actualizan automáticamente con `cantidad_preparada = 0`
+  - Todos los productos de la OT cambian a estado "Preparado"
+- **Mensaje mejorado**: Ahora indica cuántos productos no incluidos fueron marcados con cantidad 0
+
+#### Validación de duplicados en OT y OC
+- **Problema**: Se podía cargar una misma OT u OC múltiples veces, duplicando registros
+- **Causa**: Se usaba `upsert` que permitía sobrescribir registros existentes
+- **Solución**: 
+  - **Para OT**: Antes de insertar, verifica si algún `id_ot` ya existe en la base de datos
+  - **Para OC**: Antes de insertar, verifica si algún `Oc` ya existe en la base de datos
+  - Si hay duplicados, retorna error con la lista de documentos ya existentes
+  - Cambiado de `upsert` a `insert` para prevenir sobrescritura accidental
+- **Mensaje de error**: Indica claramente qué documentos ya existen y sugiere usar las secciones de actualización correspondientes
+
+### 🔄 Cambiado
+
+#### Endpoint POST /api/upload/ot
+- Ahora valida existencia previa de `id_ot` antes de insertar
+- Retorna error 400 si se detectan duplicados
+- Usa `insert` en lugar de `upsert`
+
+#### Endpoint POST /api/upload/oc
+- Ahora valida existencia previa de `Oc` antes de insertar
+- Retorna error 400 si se detectan duplicados
+- Usa `insert` en lugar de `upsert`
+
+#### Endpoint POST /api/upload/ota
+- Procesa por OT completa en lugar de fila por fila
+- Actualiza todos los SKUs de la OT (incluidos y no incluidos)
+- Mejor manejo de errores a nivel de OT
+
+---
+
 ## [4.0.2] - 2024-12-18
 
 ### ✨ Agregado
@@ -951,6 +993,6 @@ Para agregar cambios a este CHANGELOG:
 ---
 
 **Mantenido por**: Equipo de Desarrollo  
-**Última actualización**: 18 de Diciembre, 2024  
-**Versión actual**: 4.0.0
+**Última actualización**: 19 de Diciembre, 2024  
+**Versión actual**: 4.0.3
 

@@ -307,6 +307,7 @@ app.get('/api/oc-pendientes', async (req, res) => {
 // ============================================================================
 // CARGA DE OC (Orden de Compra)
 // Usa tabla existente: "Orden_Compra" con campos PascalCase
+// CORRECCIÓN: Valida que la OC no exista previamente para evitar duplicados
 // ============================================================================
 app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
   try {
@@ -318,6 +319,33 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
     
     if (records.length === 0) {
       return res.status(400).json({ success: false, error: 'El archivo está vacío' });
+    }
+
+    // Extraer todos los números de OC únicos del archivo
+    const ocsEnArchivo = [...new Set(records
+      .filter(r => r.id_oc || r.Oc || r.oc || r.OC)
+      .map(r => cleanText(r.id_oc || r.Oc || r.oc || r.OC))
+    )];
+
+    // Verificar si alguna OC ya existe en la base de datos
+    if (ocsEnArchivo.length > 0) {
+      const { data: existentes, error: checkError } = await supabase
+        .from('Orden_Compra')
+        .select('Oc')
+        .in('Oc', ocsEnArchivo);
+
+      if (checkError) {
+        return res.status(500).json({ success: false, error: `Error verificando duplicados: ${checkError.message}` });
+      }
+
+      if (existentes && existentes.length > 0) {
+        const ocsExistentes = [...new Set(existentes.map(e => e.Oc))];
+        return res.status(400).json({ 
+          success: false, 
+          error: `Las siguientes OC ya existen en el sistema y no se pueden duplicar: ${ocsExistentes.join(', ')}. Si desea registrar la recepción, use la sección "Recepción".`,
+          duplicados: ocsExistentes
+        });
+      }
     }
 
     const results = { exitosos: 0, fallidos: 0, errores: [] };
@@ -356,7 +384,7 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
         // Generar ID único para el detalle (igual que en el proyecto anterior)
         const idDetOc = cleanText(row.Id_Det_OC || row.id_det_oc) || `${idOc}-${codProd}`;
 
-        // Preparar datos para insertar/actualizar - usando nombres de columna de la tabla existente
+        // Preparar datos para insertar - usando nombres de columna de la tabla existente
         const recordData = {
           Id: idDetOc,
           Oc: idOc,
@@ -378,13 +406,10 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
           Fecha_Procesamiento: new Date().toISOString()
         };
 
-        // Usar upsert con la tabla existente
+        // Usar insert en lugar de upsert para evitar sobrescribir
         const { error } = await supabase
           .from('Orden_Compra')
-          .upsert(recordData, { 
-            onConflict: 'Id',
-            ignoreDuplicates: false 
-          });
+          .insert(recordData);
 
         if (error) {
           throw new Error(error.message || 'Error al guardar en base de datos');
@@ -625,6 +650,7 @@ app.get('/api/stats', async (req, res) => {
 
 // ============================================================================
 // CARGA DE OT (Solicitud)
+// CORRECCIÓN: Valida que el id_ot no exista previamente para evitar duplicados
 // ============================================================================
 app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
   try {
@@ -636,6 +662,33 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
     
     if (records.length === 0) {
       return res.status(400).json({ success: false, error: 'El archivo está vacío' });
+    }
+
+    // Extraer todos los id_ot únicos del archivo
+    const idsOtEnArchivo = [...new Set(records
+      .filter(r => r.id_ot)
+      .map(r => String(r.id_ot).trim())
+    )];
+
+    // Verificar si alguno ya existe en la base de datos
+    if (idsOtEnArchivo.length > 0) {
+      const { data: existentes, error: checkError } = await supabase
+        .from('transfer_orders')
+        .select('id_ot')
+        .in('id_ot', idsOtEnArchivo);
+
+      if (checkError) {
+        return res.status(500).json({ success: false, error: `Error verificando duplicados: ${checkError.message}` });
+      }
+
+      if (existentes && existentes.length > 0) {
+        const idsExistentes = [...new Set(existentes.map(e => e.id_ot))];
+        return res.status(400).json({ 
+          success: false, 
+          error: `Las siguientes OT ya existen en el sistema y no se pueden duplicar: ${idsExistentes.join(', ')}. Si desea actualizar una OT existente, use las secciones correspondientes (OTA, OTADET, OTF).`,
+          duplicados: idsExistentes
+        });
+      }
     }
 
     const results = { exitosos: 0, fallidos: 0, errores: [] };
@@ -676,12 +729,10 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
           updated_at: new Date().toISOString()
         };
 
+        // Usar insert en lugar de upsert para evitar sobrescribir
         const { error } = await supabase
           .from('transfer_orders')
-          .upsert(recordData, { 
-            onConflict: 'id_ot,sku',
-            ignoreDuplicates: false 
-          });
+          .insert(recordData);
 
         if (error) {
           throw new Error(error.message || 'Error al guardar en base de datos');
@@ -710,6 +761,7 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
 
 // ============================================================================
 // CARGA DE OTA (Preparación)
+// CORRECCIÓN: Actualiza TODAS las líneas de la OT - las no incluidas quedan en 0
 // ============================================================================
 app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
   try {
@@ -723,52 +775,125 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'El archivo está vacío' });
     }
 
-    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    const results = { exitosos: 0, fallidos: 0, errores: [], noIncluidos: 0 };
 
+    // Agrupar registros por id_ot para procesar OT completas
+    const registrosPorOT = {};
+    const skusPorOT = {};
+    
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
       const rowNum = i + 2;
 
+      if (!row.id_ot || !row.sku) {
+        results.fallidos++;
+        results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (id_ot, sku)`);
+        continue;
+      }
+
+      if (!row.cantidad_preparada || isNaN(parseFloat(row.cantidad_preparada))) {
+        results.fallidos++;
+        results.errores.push(`Fila ${rowNum}: cantidad_preparada inválida`);
+        continue;
+      }
+
+      const idOt = String(row.id_ot).trim();
+      const sku = String(row.sku).trim();
+      
+      if (!registrosPorOT[idOt]) {
+        registrosPorOT[idOt] = [];
+        skusPorOT[idOt] = new Set();
+      }
+      
+      registrosPorOT[idOt].push({
+        sku: sku,
+        cantidad_preparada: parseFloat(row.cantidad_preparada),
+        fecha_preparacion: parseDate(row.fecha_preparacion) || new Date().toISOString(),
+        rowNum: rowNum
+      });
+      skusPorOT[idOt].add(sku);
+    }
+
+    // Procesar cada OT completa
+    for (const idOt of Object.keys(registrosPorOT)) {
       try {
-        if (!row.id_ot || !row.sku) {
-          results.fallidos++;
-          results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (id_ot, sku)`);
-          continue;
-        }
-
-        if (!row.cantidad_preparada || isNaN(parseFloat(row.cantidad_preparada))) {
-          results.fallidos++;
-          results.errores.push(`Fila ${rowNum}: cantidad_preparada inválida`);
-          continue;
-        }
-
-        const { error } = await supabase
+        // Obtener TODOS los SKUs de esta OT en estado Solicitado
+        const { data: productosOT, error: fetchError } = await supabase
           .from('transfer_orders')
-          .update({
-            fecha_preparacion: parseDate(row.fecha_preparacion) || new Date().toISOString(),
-            cantidad_preparada: parseFloat(row.cantidad_preparada),
-            estado: 'Preparado',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id_ot', String(row.id_ot).trim())
-          .eq('sku', String(row.sku).trim());
+          .select('sku')
+          .eq('id_ot', idOt)
+          .eq('estado', 'Solicitado');
 
-        if (error) {
-          throw new Error(error.message || 'Error al actualizar en base de datos');
+        if (fetchError) {
+          throw new Error(`Error obteniendo productos de OT ${idOt}: ${fetchError.message}`);
         }
-        
-        results.exitosos++;
+
+        if (!productosOT || productosOT.length === 0) {
+          results.errores.push(`OT ${idOt}: No se encontraron productos pendientes de preparación`);
+          continue;
+        }
+
+        const fechaActualizacion = new Date().toISOString();
+        const skusIncluidos = skusPorOT[idOt];
+
+        // 1. Actualizar productos INCLUIDOS en el archivo
+        for (const registro of registrosPorOT[idOt]) {
+          const { error } = await supabase
+            .from('transfer_orders')
+            .update({
+              fecha_preparacion: registro.fecha_preparacion,
+              cantidad_preparada: registro.cantidad_preparada,
+              estado: 'Preparado',
+              updated_at: fechaActualizacion
+            })
+            .eq('id_ot', idOt)
+            .eq('sku', registro.sku);
+
+          if (error) {
+            results.fallidos++;
+            results.errores.push(`Fila ${registro.rowNum}: ${error.message}`);
+          } else {
+            results.exitosos++;
+          }
+        }
+
+        // 2. Actualizar productos NO INCLUIDOS a cantidad_preparada = 0
+        const skusNoIncluidos = productosOT
+          .map(p => p.sku)
+          .filter(sku => !skusIncluidos.has(sku));
+
+        if (skusNoIncluidos.length > 0) {
+          const { error: updateError } = await supabase
+            .from('transfer_orders')
+            .update({
+              fecha_preparacion: fechaActualizacion,
+              cantidad_preparada: 0,
+              estado: 'Preparado',
+              updated_at: fechaActualizacion
+            })
+            .eq('id_ot', idOt)
+            .in('sku', skusNoIncluidos);
+
+          if (updateError) {
+            results.errores.push(`OT ${idOt}: Error actualizando SKUs no incluidos: ${updateError.message}`);
+          } else {
+            results.noIncluidos += skusNoIncluidos.length;
+          }
+        }
 
       } catch (error) {
-        results.fallidos++;
-        results.errores.push(`Fila ${rowNum}: ${error.message}`);
-        console.error(`Error procesando fila ${rowNum}:`, error);
+        results.errores.push(`OT ${idOt}: ${error.message}`);
+        console.error(`Error procesando OT ${idOt}:`, error);
       }
     }
 
+    const mensaje = results.noIncluidos > 0 
+      ? `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos. ${results.noIncluidos} productos no incluidos marcados con cantidad 0.`
+      : `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`;
+
     res.json({
       success: results.fallidos === 0,
-      message: `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`,
+      message: mensaje,
       results
     });
 
