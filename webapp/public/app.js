@@ -8,6 +8,8 @@ const API_BASE = '';
 let currentModule = 'oc'; // 'oc' o 'ot'
 let CLIENTES = [];
 let PROVEEDORES = [];
+let CLIENTES_CON_BODEGA = [];
+let PROVEEDORES_CON_BODEGA = [];
 let ocSeleccionadaParaAjuste = null; // OC seleccionada para ajustar fecha
 let otSeleccionadaParaAjuste = null; // OT seleccionada para ajustar fecha
 
@@ -334,9 +336,6 @@ async function loadClientes() {
     console.error('Error cargando clientes:', error);
   }
 }
-
-let PROVEEDORES_CON_BODEGA = [];
-let CLIENTES_CON_BODEGA = [];
 
 async function loadProveedores() {
   try {
