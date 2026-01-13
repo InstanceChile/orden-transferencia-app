@@ -72,21 +72,81 @@
         <!-- ============================================ -->
         <div class="module-content active" id="module-oc">
           <!-- Navigation Tabs OC -->
-          <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="oc-carga">
-              <span class="tab-icon">📋</span>
-              <span class="tab-text">OC</span>
-              <span class="tab-badge">Carga</span>
-            </button>
-            <button class="tab-btn" data-tab="oc-recepcion">
-              <span class="tab-icon">✅</span>
-              <span class="tab-text">Recepción</span>
-              <span class="tab-badge">OCR</span>
-            </button>
+          <nav class="tabs-nav tabs-nav-split">
+            <div class="tabs-left">
+              <button class="tab-btn active" data-tab="oc-carga">
+                <span class="tab-icon">📋</span>
+                <span class="tab-text">OC</span>
+                <span class="tab-badge">Carga</span>
+              </button>
+              <button class="tab-btn" data-tab="oc-recepcion">
+                <span class="tab-icon">✅</span>
+                <span class="tab-text">Recepción</span>
+                <span class="tab-badge">OCR</span>
+              </button>
+            </div>
+            <div class="tabs-right">
+              <button class="tab-btn tab-btn-action" data-tab="oc-ajuste-fecha">
+                <span class="tab-icon">📅</span>
+                <span class="tab-text">Ajustar Fecha</span>
+              </button>
+            </div>
           </nav>
 
           <!-- Tab Panels OC -->
           <div class="tab-panels">
+            <!-- OC Ajuste Fecha Panel -->
+            <div class="tab-panel" id="panel-oc-ajuste-fecha">
+              <div class="panel-header">
+                <div class="panel-info">
+                  <h2>📅 Ajustar Fecha de Recepción</h2>
+                  <p>Selecciona una OC para modificar su fecha de recepción esperada</p>
+                </div>
+              </div>
+              
+              <div class="ajuste-fecha-container">
+                <div class="tabla-oc-pendientes">
+                  <h4>Órdenes de Compra Pendientes</h4>
+                  <div class="tabla-scroll">
+                    <table class="oc-table" id="tabla-oc-ajuste">
+                      <thead>
+                        <tr>
+                          <th>Proveedor</th>
+                          <th>N° OC</th>
+                          <th>Cantidad Total</th>
+                          <th>Monto Total</th>
+                          <th>Fecha Recepción</th>
+                          <th>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-oc-ajuste">
+                        <!-- Se carga dinámicamente -->
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="tabla-empty" id="tabla-oc-empty">
+                    <span>📭</span>
+                    <p>No hay OC pendientes de recepción</p>
+                  </div>
+                </div>
+                
+                <div class="calendario-ajuste" id="calendario-ajuste">
+                  <h4>Nueva Fecha de Recepción</h4>
+                  <div class="oc-seleccionada" id="oc-seleccionada-info">
+                    <p>Selecciona una OC de la tabla</p>
+                  </div>
+                  <div class="fecha-input-container">
+                    <label for="nueva-fecha-recepcion">Fecha:</label>
+                    <input type="date" id="nueva-fecha-recepcion" class="date-input" disabled>
+                  </div>
+                  <button class="btn btn-primary btn-actualizar-fecha" id="btn-actualizar-fecha" disabled onclick="actualizarFechaRecepcion()">
+                    <span class="btn-icon">💾</span>
+                    Actualizar Fecha
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- OC Carga Panel -->
             <div class="tab-panel active" id="panel-oc-carga">
               <div class="panel-header">
@@ -198,31 +258,91 @@
         <!-- ============================================ -->
         <div class="module-content" id="module-ot">
           <!-- Navigation Tabs OT -->
-          <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="ot">
-              <span class="tab-icon">📋</span>
-              <span class="tab-text">OT</span>
-              <span class="tab-badge">Solicitud</span>
-            </button>
-            <button class="tab-btn" data-tab="ota">
-              <span class="tab-icon">🔧</span>
-              <span class="tab-text">OTA</span>
-              <span class="tab-badge">Preparación</span>
-            </button>
-            <button class="tab-btn" data-tab="otadet">
-              <span class="tab-icon">📊</span>
-              <span class="tab-text">OTADET</span>
-              <span class="tab-badge">Detalle EAN</span>
-            </button>
-            <button class="tab-btn" data-tab="otf">
-              <span class="tab-icon">✅</span>
-              <span class="tab-text">OTF</span>
-              <span class="tab-badge">Recepción</span>
-            </button>
+          <nav class="tabs-nav tabs-nav-split">
+            <div class="tabs-left">
+              <button class="tab-btn active" data-tab="ot">
+                <span class="tab-icon">📋</span>
+                <span class="tab-text">OT</span>
+                <span class="tab-badge">Solicitud</span>
+              </button>
+              <button class="tab-btn" data-tab="ota">
+                <span class="tab-icon">🔧</span>
+                <span class="tab-text">OTA</span>
+                <span class="tab-badge">Preparación</span>
+              </button>
+              <button class="tab-btn" data-tab="otadet">
+                <span class="tab-icon">📊</span>
+                <span class="tab-text">OTADET</span>
+                <span class="tab-badge">Detalle EAN</span>
+              </button>
+              <button class="tab-btn" data-tab="otf">
+                <span class="tab-icon">✅</span>
+                <span class="tab-text">OTF</span>
+                <span class="tab-badge">Recepción</span>
+              </button>
+            </div>
+            <div class="tabs-right">
+              <button class="tab-btn tab-btn-action" data-tab="ot-ajuste-fecha">
+                <span class="tab-icon">📅</span>
+                <span class="tab-text">Ajustar Fecha</span>
+              </button>
+            </div>
           </nav>
 
           <!-- Tab Panels OT -->
           <div class="tab-panels">
+            <!-- OT Ajuste Fecha Panel -->
+            <div class="tab-panel" id="panel-ot-ajuste-fecha">
+              <div class="panel-header">
+                <div class="panel-info">
+                  <h2>📅 Ajustar Fecha Comprometida</h2>
+                  <p>Selecciona una OT para modificar su fecha de transferencia comprometida</p>
+                </div>
+              </div>
+              
+              <div class="ajuste-fecha-container">
+                <div class="tabla-oc-pendientes">
+                  <h4>Órdenes de Transferencia (Solicitado / Preparado)</h4>
+                  <div class="tabla-scroll">
+                    <table class="oc-table" id="tabla-ot-ajuste">
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>N° OT</th>
+                          <th>Estado</th>
+                          <th>Cantidad Total</th>
+                          <th>Fecha Comprometida</th>
+                          <th>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-ot-ajuste">
+                        <!-- Se carga dinámicamente -->
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="tabla-empty" id="tabla-ot-empty">
+                    <span>📭</span>
+                    <p>No hay OT pendientes de ajuste</p>
+                  </div>
+                </div>
+                
+                <div class="calendario-ajuste" id="calendario-ajuste-ot">
+                  <h4>Nueva Fecha Comprometida</h4>
+                  <div class="oc-seleccionada" id="ot-seleccionada-info">
+                    <p>Selecciona una OT de la tabla</p>
+                  </div>
+                  <div class="fecha-input-container">
+                    <label for="nueva-fecha-ot">Fecha:</label>
+                    <input type="date" id="nueva-fecha-ot" class="date-input" disabled>
+                  </div>
+                  <button class="btn btn-primary btn-actualizar-fecha" id="btn-actualizar-fecha-ot" disabled onclick="actualizarFechaOT()">
+                    <span class="btn-icon">💾</span>
+                    Actualizar Fecha
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- OT Panel -->
             <div class="tab-panel active" id="panel-ot">
               <div class="panel-header">

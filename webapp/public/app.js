@@ -8,6 +8,8 @@ const API_BASE = '';
 let currentModule = 'oc'; // 'oc' o 'ot'
 let CLIENTES = [];
 let PROVEEDORES = [];
+let ocSeleccionadaParaAjuste = null; // OC seleccionada para ajustar fecha
+let otSeleccionadaParaAjuste = null; // OT seleccionada para ajustar fecha
 
 // ============================================================================
 // INICIALIZACIÓN
@@ -114,10 +116,14 @@ function initTabsForModule(moduleId) {
       if (moduleId === 'module-ot') {
         if (['ota', 'otadet', 'otf'].includes(tabId)) {
           loadOTPendientes(tabId.toUpperCase());
+        } else if (tabId === 'ot-ajuste-fecha') {
+          loadOTParaAjuste();
         }
       } else if (moduleId === 'module-oc') {
         if (tabId === 'oc-recepcion') {
           loadOCPendientes();
+        } else if (tabId === 'oc-ajuste-fecha') {
+          loadOCParaAjuste();
         }
       }
     });
@@ -236,10 +242,12 @@ function showResults(result, type) {
   const typeNames = {
     'oc-carga': 'Orden de Compra',
     'oc-recepcion': 'Recepción OC',
+    'oc-ajuste-fecha': 'Ajuste Fecha OC',
     'ot': 'OT (Solicitud)',
     'ota': 'OTA (Preparación)',
     'otadet': 'OTADET (Detalle EAN)',
-    'otf': 'OTF (Recepción)'
+    'otf': 'OTF (Recepción)',
+    'ot-ajuste-fecha': 'Ajuste Fecha OT'
   };
   
   title.textContent = `Resultado de Carga - ${typeNames[type] || type}`;
@@ -319,12 +327,16 @@ async function loadClientes() {
     
     if (data.success) {
       CLIENTES = data.clientes;
+      CLIENTES_CON_BODEGA = data.clientesConBodega || [];
       renderClientesTags();
     }
   } catch (error) {
     console.error('Error cargando clientes:', error);
   }
 }
+
+let PROVEEDORES_CON_BODEGA = [];
+let CLIENTES_CON_BODEGA = [];
 
 async function loadProveedores() {
   try {
@@ -333,6 +345,7 @@ async function loadProveedores() {
     
     if (data.success) {
       PROVEEDORES = data.proveedores;
+      PROVEEDORES_CON_BODEGA = data.proveedoresConBodega || [];
       renderProveedoresList();
     }
   } catch (error) {
@@ -344,7 +357,23 @@ function renderClientesTags() {
   const container = document.getElementById('clientesTags');
   if (!container) return;
   
-  container.innerHTML = CLIENTES.map(cliente => 
+  // Agrupar por bodega
+  const renca = CLIENTES_CON_BODEGA.filter(c => c.bodega === 'Renca');
+  const segmail = CLIENTES_CON_BODEGA.filter(c => c.bodega === 'Segmail');
+  
+  let html = '';
+  if (renca.length > 0) {
+    html += '<div class="bodega-group"><strong>📦 Bodega Renca:</strong><div class="tags-container">';
+    html += renca.map(c => `<span class="cliente-tag renca">${c.nombre}</span>`).join('');
+    html += '</div></div>';
+  }
+  if (segmail.length > 0) {
+    html += '<div class="bodega-group"><strong>📦 Bodega Segmail:</strong><div class="tags-container">';
+    html += segmail.map(c => `<span class="cliente-tag segmail">${c.nombre}</span>`).join('');
+    html += '</div></div>';
+  }
+  
+  container.innerHTML = html || CLIENTES.map(cliente => 
     `<span class="cliente-tag">${cliente}</span>`
   ).join('');
 }
@@ -353,7 +382,23 @@ function renderProveedoresList() {
   const container = document.getElementById('lista-proveedores-oc');
   if (!container) return;
   
-  container.innerHTML = PROVEEDORES.map(proveedor => 
+  // Agrupar por bodega
+  const renca = PROVEEDORES_CON_BODEGA.filter(p => p.bodega === 'Renca');
+  const segmail = PROVEEDORES_CON_BODEGA.filter(p => p.bodega === 'Segmail');
+  
+  let html = '';
+  if (renca.length > 0) {
+    html += '<li><strong>📦 Bodega Renca:</strong><ul>';
+    html += renca.map(p => `<li><code>${p.nombre}</code></li>`).join('');
+    html += '</ul></li>';
+  }
+  if (segmail.length > 0) {
+    html += '<li><strong>📦 Bodega Segmail:</strong><ul>';
+    html += segmail.map(p => `<li><code>${p.nombre}</code></li>`).join('');
+    html += '</ul></li>';
+  }
+  
+  container.innerHTML = html || PROVEEDORES.map(proveedor => 
     `<li><code>${proveedor}</code></li>`
   ).join('');
 }
@@ -468,6 +513,418 @@ async function loadOCPendientes() {
 
 function downloadTemplate(tipo) {
   window.location.href = `${API_BASE}/api/template/${tipo}`;
+}
+
+// ============================================================================
+// AJUSTE DE FECHA DE RECEPCIÓN OC
+// ============================================================================
+
+async function loadOCParaAjuste() {
+  try {
+    const response = await fetch(`${API_BASE}/api/oc-resumen-pendientes`);
+    const data = await response.json();
+    
+    const tbody = document.getElementById('tbody-oc-ajuste');
+    const emptyState = document.getElementById('tabla-oc-empty');
+    const tablaScroll = document.querySelector('.tabla-scroll');
+    
+    if (!tbody) return;
+    
+    if (data.success && data.data && data.data.length > 0) {
+      tbody.innerHTML = data.data.map(oc => `
+        <tr data-oc="${oc.oc}" data-proveedor="${oc.proveedor}" data-fecha="${oc.fecha_recepcion || ''}">
+          <td>${oc.proveedor || 'Sin proveedor'}</td>
+          <td><strong>${oc.oc}</strong></td>
+          <td class="cantidad">${formatNumber(oc.cantidad_total)}</td>
+          <td class="monto">$${formatNumber(oc.monto_total)}</td>
+          <td class="fecha">${formatFecha(oc.fecha_recepcion)}</td>
+          <td>
+            <button class="btn-seleccionar" onclick="seleccionarOCParaAjuste('${oc.oc}', '${oc.proveedor || 'Sin proveedor'}', '${oc.fecha_recepcion || ''}')">
+              Seleccionar
+            </button>
+          </td>
+        </tr>
+      `).join('');
+      
+      if (tablaScroll) tablaScroll.style.display = 'block';
+      if (emptyState) emptyState.classList.remove('visible');
+    } else {
+      tbody.innerHTML = '';
+      if (tablaScroll) tablaScroll.style.display = 'none';
+      if (emptyState) emptyState.classList.add('visible');
+    }
+    
+    // Limpiar selección previa
+    limpiarSeleccionOC();
+    
+  } catch (error) {
+    console.error('Error cargando OC para ajuste:', error);
+  }
+}
+
+function seleccionarOCParaAjuste(oc, proveedor, fechaActual) {
+  ocSeleccionadaParaAjuste = { oc, proveedor, fechaActual };
+  
+  // Marcar fila seleccionada en tabla
+  const filas = document.querySelectorAll('#tbody-oc-ajuste tr');
+  filas.forEach(fila => {
+    if (fila.dataset.oc === oc) {
+      fila.classList.add('selected');
+    } else {
+      fila.classList.remove('selected');
+    }
+  });
+  
+  // Actualizar panel de selección
+  const infoContainer = document.getElementById('oc-seleccionada-info');
+  if (infoContainer) {
+    infoContainer.innerHTML = `
+      <div class="oc-info-selected">
+        <span class="oc-numero">OC ${oc}</span>
+        <span class="oc-proveedor">${proveedor}</span>
+        <span class="oc-fecha-actual">Fecha actual: <span>${formatFecha(fechaActual)}</span></span>
+      </div>
+    `;
+  }
+  
+  // Habilitar input de fecha y botón
+  const inputFecha = document.getElementById('nueva-fecha-recepcion');
+  const btnActualizar = document.getElementById('btn-actualizar-fecha');
+  
+  if (inputFecha) {
+    inputFecha.disabled = false;
+    // Si hay fecha actual, convertirla a formato input date
+    if (fechaActual) {
+      const fecha = new Date(fechaActual);
+      if (!isNaN(fecha.getTime())) {
+        inputFecha.value = fecha.toISOString().split('T')[0];
+      } else {
+        inputFecha.value = '';
+      }
+    } else {
+      inputFecha.value = '';
+    }
+  }
+  
+  if (btnActualizar) {
+    btnActualizar.disabled = false;
+  }
+}
+
+function limpiarSeleccionOC() {
+  ocSeleccionadaParaAjuste = null;
+  
+  // Quitar selección de filas
+  const filas = document.querySelectorAll('#tbody-oc-ajuste tr');
+  filas.forEach(fila => fila.classList.remove('selected'));
+  
+  // Limpiar panel de selección
+  const infoContainer = document.getElementById('oc-seleccionada-info');
+  if (infoContainer) {
+    infoContainer.innerHTML = '<p>Selecciona una OC de la tabla</p>';
+  }
+  
+  // Deshabilitar input y botón
+  const inputFecha = document.getElementById('nueva-fecha-recepcion');
+  const btnActualizar = document.getElementById('btn-actualizar-fecha');
+  
+  if (inputFecha) {
+    inputFecha.disabled = true;
+    inputFecha.value = '';
+  }
+  
+  if (btnActualizar) {
+    btnActualizar.disabled = true;
+  }
+}
+
+async function actualizarFechaRecepcion() {
+  if (!ocSeleccionadaParaAjuste) {
+    alert('Por favor selecciona una OC primero');
+    return;
+  }
+  
+  const inputFecha = document.getElementById('nueva-fecha-recepcion');
+  const nuevaFecha = inputFecha?.value;
+  
+  if (!nuevaFecha) {
+    alert('Por favor selecciona una fecha');
+    return;
+  }
+  
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/oc/actualizar-fecha`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        oc: ocSeleccionadaParaAjuste.oc,
+        fecha_recepcion: nuevaFecha
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showResults({
+        success: true,
+        message: `Fecha de recepción actualizada exitosamente para OC ${ocSeleccionadaParaAjuste.oc}`,
+        results: {
+          exitosos: result.registrosActualizados || 1,
+          fallidos: 0,
+          errores: []
+        }
+      }, 'oc-ajuste-fecha');
+      
+      // Recargar tabla
+      loadOCParaAjuste();
+    } else {
+      showResults({
+        success: false,
+        message: result.error || 'Error al actualizar la fecha',
+        results: {
+          exitosos: 0,
+          fallidos: 1,
+          errores: [result.error]
+        }
+      }, 'oc-ajuste-fecha');
+    }
+    
+  } catch (error) {
+    console.error('Error actualizando fecha:', error);
+    showResults({
+      success: false,
+      message: 'Error de conexión con el servidor',
+      results: {
+        exitosos: 0,
+        fallidos: 1,
+        errores: [error.message]
+      }
+    }, 'oc-ajuste-fecha');
+  } finally {
+    showLoading(false);
+  }
+}
+
+// Formatear números
+function formatNumber(num) {
+  if (num === null || num === undefined) return '0';
+  return new Intl.NumberFormat('es-CL').format(num);
+}
+
+// Formatear fecha
+function formatFecha(fechaStr) {
+  if (!fechaStr) return 'Sin fecha';
+  
+  try {
+    const fecha = new Date(fechaStr);
+    if (isNaN(fecha.getTime())) return fechaStr;
+    
+    return fecha.toLocaleDateString('es-CL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch {
+    return fechaStr;
+  }
+}
+
+// ============================================================================
+// AJUSTE DE FECHA COMPROMETIDA OT
+// ============================================================================
+
+async function loadOTParaAjuste() {
+  try {
+    const response = await fetch(`${API_BASE}/api/ot-resumen-pendientes`);
+    const data = await response.json();
+    
+    const tbody = document.getElementById('tbody-ot-ajuste');
+    const emptyState = document.getElementById('tabla-ot-empty');
+    const tablaScroll = tbody?.closest('.tabla-scroll');
+    
+    if (!tbody) return;
+    
+    if (data.success && data.data && data.data.length > 0) {
+      tbody.innerHTML = data.data.map(ot => `
+        <tr data-ot="${ot.id_ot}" data-cliente="${ot.cliente}" data-estado="${ot.estado}" data-fecha="${ot.fecha_transferencia_comprometida || ''}">
+          <td>${ot.cliente || 'Sin cliente'}</td>
+          <td><strong>${ot.id_ot}</strong></td>
+          <td><span class="estado-badge estado-${ot.estado.toLowerCase().replace('_', '-')}">${ot.estado}</span></td>
+          <td class="cantidad">${formatNumber(ot.cantidad_total)}</td>
+          <td class="fecha">${formatFecha(ot.fecha_transferencia_comprometida)}</td>
+          <td>
+            <button class="btn-seleccionar" onclick="seleccionarOTParaAjuste('${ot.id_ot}', '${ot.cliente || 'Sin cliente'}', '${ot.estado}', '${ot.fecha_transferencia_comprometida || ''}')">
+              Seleccionar
+            </button>
+          </td>
+        </tr>
+      `).join('');
+      
+      if (tablaScroll) tablaScroll.style.display = 'block';
+      if (emptyState) emptyState.classList.remove('visible');
+    } else {
+      tbody.innerHTML = '';
+      if (tablaScroll) tablaScroll.style.display = 'none';
+      if (emptyState) emptyState.classList.add('visible');
+    }
+    
+    // Limpiar selección previa
+    limpiarSeleccionOT();
+    
+  } catch (error) {
+    console.error('Error cargando OT para ajuste:', error);
+  }
+}
+
+function seleccionarOTParaAjuste(idOt, cliente, estado, fechaActual) {
+  otSeleccionadaParaAjuste = { idOt, cliente, estado, fechaActual };
+  
+  // Marcar fila seleccionada en tabla
+  const filas = document.querySelectorAll('#tbody-ot-ajuste tr');
+  filas.forEach(fila => {
+    if (fila.dataset.ot === idOt) {
+      fila.classList.add('selected');
+    } else {
+      fila.classList.remove('selected');
+    }
+  });
+  
+  // Actualizar panel de selección
+  const infoContainer = document.getElementById('ot-seleccionada-info');
+  if (infoContainer) {
+    infoContainer.innerHTML = `
+      <div class="oc-info-selected">
+        <span class="oc-numero">${idOt}</span>
+        <span class="oc-proveedor">${cliente} - ${estado}</span>
+        <span class="oc-fecha-actual">Fecha actual: <span>${formatFecha(fechaActual)}</span></span>
+      </div>
+    `;
+  }
+  
+  // Habilitar input de fecha y botón
+  const inputFecha = document.getElementById('nueva-fecha-ot');
+  const btnActualizar = document.getElementById('btn-actualizar-fecha-ot');
+  
+  if (inputFecha) {
+    inputFecha.disabled = false;
+    // Si hay fecha actual, convertirla a formato input date
+    if (fechaActual) {
+      const fecha = new Date(fechaActual);
+      if (!isNaN(fecha.getTime())) {
+        inputFecha.value = fecha.toISOString().split('T')[0];
+      } else {
+        inputFecha.value = '';
+      }
+    } else {
+      inputFecha.value = '';
+    }
+  }
+  
+  if (btnActualizar) {
+    btnActualizar.disabled = false;
+  }
+}
+
+function limpiarSeleccionOT() {
+  otSeleccionadaParaAjuste = null;
+  
+  // Quitar selección de filas
+  const filas = document.querySelectorAll('#tbody-ot-ajuste tr');
+  filas.forEach(fila => fila.classList.remove('selected'));
+  
+  // Limpiar panel de selección
+  const infoContainer = document.getElementById('ot-seleccionada-info');
+  if (infoContainer) {
+    infoContainer.innerHTML = '<p>Selecciona una OT de la tabla</p>';
+  }
+  
+  // Deshabilitar input y botón
+  const inputFecha = document.getElementById('nueva-fecha-ot');
+  const btnActualizar = document.getElementById('btn-actualizar-fecha-ot');
+  
+  if (inputFecha) {
+    inputFecha.disabled = true;
+    inputFecha.value = '';
+  }
+  
+  if (btnActualizar) {
+    btnActualizar.disabled = true;
+  }
+}
+
+async function actualizarFechaOT() {
+  if (!otSeleccionadaParaAjuste) {
+    alert('Por favor selecciona una OT primero');
+    return;
+  }
+  
+  const inputFecha = document.getElementById('nueva-fecha-ot');
+  const nuevaFecha = inputFecha?.value;
+  
+  if (!nuevaFecha) {
+    alert('Por favor selecciona una fecha');
+    return;
+  }
+  
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/ot/actualizar-fecha`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        id_ot: otSeleccionadaParaAjuste.idOt,
+        fecha_transferencia_comprometida: nuevaFecha
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showResults({
+        success: true,
+        message: `Fecha comprometida actualizada exitosamente para OT ${otSeleccionadaParaAjuste.idOt}`,
+        results: {
+          exitosos: result.registrosActualizados || 1,
+          fallidos: 0,
+          errores: []
+        }
+      }, 'ot-ajuste-fecha');
+      
+      // Recargar tabla
+      loadOTParaAjuste();
+    } else {
+      showResults({
+        success: false,
+        message: result.error || 'Error al actualizar la fecha',
+        results: {
+          exitosos: 0,
+          fallidos: 1,
+          errores: [result.error]
+        }
+      }, 'ot-ajuste-fecha');
+    }
+    
+  } catch (error) {
+    console.error('Error actualizando fecha OT:', error);
+    showResults({
+      success: false,
+      message: 'Error de conexión con el servidor',
+      results: {
+        exitosos: 0,
+        fallidos: 1,
+        errores: [error.message]
+      }
+    }, 'ot-ajuste-fecha');
+  } finally {
+    showLoading(false);
+  }
 }
 
 // ============================================================================

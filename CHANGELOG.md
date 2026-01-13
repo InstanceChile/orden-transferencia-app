@@ -7,6 +7,76 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ---
 
+## [4.0.6] - 2025-01-13
+
+### ✨ Agregado
+
+#### Actualización de lista de Clientes/Proveedores con asignación automática de Bodega
+- **Nuevos clientes/proveedores Bodega Segmail**: Concha y Toro MX, Clorox Mx, Beiersdorf MX, Form, TAMEX, Lindt, Tres montes Luchetti, Unilever Mx, Grupo Ruz, Meru, Sundar MX, SODIMAC
+- **Clientes/proveedores Bodega Renca**: Ballerina, Beiersdorf, Bodyshop, Bridgestone, California Energy Drink, Davis, Elite Professional, Faber Castell, Ferretería La Reina, Icb, Mercado Carozzi, Seis Luces, Sika, Smart Earth Camelina, Softys, Virutex - ILKO, Carozzi Fs
+- **Asignación automática de bodega**: Al cargar una OC, la bodega se asigna automáticamente según el proveedor
+- **Visualización mejorada**: La lista de clientes/proveedores ahora muestra agrupación por bodega con colores distintivos (verde para Renca, azul para Segmail)
+
+---
+
+## [4.0.5] - 2024-12-19
+
+### ✨ Agregado
+
+#### Nueva funcionalidad: Ajustar Fecha Comprometida OT
+- **Nuevo botón**: "📅 Ajustar Fecha" en la barra de navegación del módulo OT (a la derecha)
+- **Tabla resumen de OT pendientes**:
+  - Muestra OT en estado "Solicitado" o "Preparado"
+  - Agrupadas por Cliente, ID OT, Estado
+  - Columnas: Cliente, N° OT, Estado (con badge), Cantidad Total, Fecha Comprometida
+- **Panel de ajuste de fecha**: Permite modificar `fecha_transferencia_comprometida`
+- **Nuevos endpoints**: `GET /api/ot-resumen-pendientes`, `POST /api/ot/actualizar-fecha`
+
+### 🐛 Corregido
+
+#### Validación numérica mejorada para carga de OC
+- **Nueva función `parseNumber`**: Detecta y convierte múltiples formatos numéricos
+  - Formato europeo: `1.234,56` → `1234.56`
+  - Formato americano: `1,234.56` → `1234.56`
+  - Con símbolos de moneda: `$1.500` → `1500`
+- **Mensajes de error claros**: Indica exactamente qué campo y qué valor causó el error
+  - Ejemplo: `Fila 3: Precio_Prod_Oc: no se pudo convertir "$abc" a número`
+- **Si hay error de formato**: La fila NO se carga y se muestra en el resumen de errores
+- **Campos validados**: Cantidad_Prod_Oc, Precio_Prod_Oc, Precio_Caja, Cantidad_Caja, UXC, Total
+
+#### Corrección menor en botón Ajustar Fecha OC
+- Eliminado campo inexistente `Fecha_Actualizacion_Fecha` del update
+- Posición invertida: OC y Recepción a la izquierda, Ajustar Fecha a la derecha
+
+---
+
+## [4.0.4] - 2024-12-19
+
+### ✨ Agregado
+
+#### Nueva funcionalidad: Ajustar Fecha de Recepción OC
+- **Nuevo botón**: "📅 Ajustar Fecha" en la barra de navegación del módulo OC (a la izquierda)
+- **Tabla resumen de OC pendientes**:
+  - Muestra OC en estado "Creado" agrupadas por Proveedor y Número OC
+  - Columnas: Proveedor, N° OC, Cantidad Total (suma), Monto Total (suma), Fecha Recepción actual
+  - Click en fila o botón "Seleccionar" para elegir una OC
+- **Panel de ajuste de fecha**:
+  - Muestra información de la OC seleccionada
+  - Input de tipo calendario para seleccionar nueva fecha
+  - Botón "Actualizar Fecha" que modifica todas las líneas de la OC
+
+#### Nuevos endpoints API
+- `GET /api/oc-resumen-pendientes` - Retorna OC pendientes agrupadas con totales
+- `POST /api/oc/actualizar-fecha` - Actualiza Fecha_Recepcion de todas las líneas de una OC
+
+#### Estilos
+- Nuevo layout de tabs dividido (tabs-nav-split) con botones a izquierda y derecha
+- Estilos para tabla de OC con filas seleccionables
+- Panel lateral con calendario para ajuste de fecha
+- Diseño responsive para pantallas pequeñas
+
+---
+
 ## [4.0.3] - 2024-12-19
 
 ### 🐛 Corregido
@@ -994,5 +1064,5 @@ Para agregar cambios a este CHANGELOG:
 
 **Mantenido por**: Equipo de Desarrollo  
 **Última actualización**: 19 de Diciembre, 2024  
-**Versión actual**: 4.0.3
+**Versión actual**: 4.0.6
 

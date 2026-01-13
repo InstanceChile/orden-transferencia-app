@@ -63,8 +63,8 @@ const upload = multer({
   }
 });
 
-// Lista de clientes predefinidos (para OT)
-const CLIENTES = [
+// Lista de clientes/proveedores con bodega Renca
+const CLIENTES_RENCA = [
   'Ballerina',
   'Beiersdorf',
   'Bodyshop',
@@ -84,26 +84,49 @@ const CLIENTES = [
   'Carozzi Fs'
 ];
 
-// Lista de proveedores predefinidos (para OC)
-const PROVEEDORES = [
-  'Ballerina',
-  'Beiersdorf',
-  'Bodyshop',
-  'Bridgestone',
-  'California Energy Drink',
-  'Davis',
-  'Elite Professional',
-  'Faber Castell',
-  'Ferretería La Reina',
-  'Icb',
-  'Mercado Carozzi',
-  'Seis Luces',
-  'Sika',
-  'Smart Earth Camelina',
-  'Softys',
-  'Virutex - ILKO',
-  'Carozzi Fs'
+// Lista de clientes/proveedores con bodega Segmail
+const CLIENTES_SEGMAIL = [
+  'Concha y Toro MX',
+  'Clorox Mx',
+  'Beiersdorf MX',
+  'Form',
+  'TAMEX',
+  'Lindt',
+  'Tres montes Luchetti',
+  'Unilever Mx',
+  'Grupo Ruz',
+  'Meru',
+  'Sundar MX',
+  'SODIMAC'
 ];
+
+// Lista combinada de todos los clientes (para OT)
+const CLIENTES = [...CLIENTES_RENCA, ...CLIENTES_SEGMAIL];
+
+// Lista combinada de todos los proveedores (para OC)
+const PROVEEDORES = [...CLIENTES_RENCA, ...CLIENTES_SEGMAIL];
+
+/**
+ * Obtiene la bodega correspondiente según el cliente/proveedor
+ */
+function getBodegaPorCliente(cliente) {
+  if (!cliente) return null;
+  const clienteNormalizado = cliente.trim();
+  
+  // Buscar en lista Renca (case-insensitive)
+  const esRenca = CLIENTES_RENCA.some(c => 
+    c.toLowerCase() === clienteNormalizado.toLowerCase()
+  );
+  if (esRenca) return 'Renca';
+  
+  // Buscar en lista Segmail (case-insensitive)
+  const esSegmail = CLIENTES_SEGMAIL.some(c => 
+    c.toLowerCase() === clienteNormalizado.toLowerCase()
+  );
+  if (esSegmail) return 'Segmail';
+  
+  return null; // Cliente no reconocido
+}
 
 // ============================================================================
 // UTILIDADES
@@ -177,6 +200,93 @@ function cleanText(value) {
   return str === '' ? null : str;
 }
 
+/**
+ * Parsea un número desde varios formatos posibles
+ * Retorna { value: number|null, error: string|null }
+ */
+function parseNumber(value, fieldName = 'campo') {
+  if (value === null || value === undefined || value === '') {
+    return { value: null, error: null };
+  }
+  
+  let str = String(value).trim();
+  
+  // Si está vacío después de trim
+  if (str === '') {
+    return { value: null, error: null };
+  }
+  
+  // Guardar valor original para el mensaje de error
+  const originalValue = str;
+  
+  // Remover símbolos de moneda comunes
+  str = str.replace(/[$€£¥CLP\s]/gi, '');
+  
+  // Detectar formato: si tiene punto y coma, determinar cuál es separador decimal
+  const hasDot = str.includes('.');
+  const hasComma = str.includes(',');
+  
+  if (hasDot && hasComma) {
+    // Formato europeo: 1.234,56 -> convertir a 1234.56
+    // Formato americano: 1,234.56 -> convertir a 1234.56
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+    
+    if (lastComma > lastDot) {
+      // Formato europeo: punto es separador de miles, coma es decimal
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // Formato americano: coma es separador de miles, punto es decimal
+      str = str.replace(/,/g, '');
+    }
+  } else if (hasComma && !hasDot) {
+    // Solo tiene coma - puede ser decimal o miles
+    // Si la coma tiene exactamente 2-3 dígitos después, es decimal
+    const parts = str.split(',');
+    if (parts.length === 2 && parts[1].length <= 3) {
+      str = str.replace(',', '.');
+    } else {
+      // Es separador de miles
+      str = str.replace(/,/g, '');
+    }
+  }
+  // Si solo tiene punto, asumimos que es decimal (formato americano/internacional)
+  
+  // Remover caracteres no numéricos excepto punto y signo negativo
+  str = str.replace(/[^\d.\-]/g, '');
+  
+  // Validar que no tenga múltiples puntos
+  const dotCount = (str.match(/\./g) || []).length;
+  if (dotCount > 1) {
+    return { value: null, error: `${fieldName}: formato numérico inválido "${originalValue}" (múltiples puntos decimales)` };
+  }
+  
+  const num = parseFloat(str);
+  
+  if (isNaN(num)) {
+    return { value: null, error: `${fieldName}: no se pudo convertir "${originalValue}" a número` };
+  }
+  
+  return { value: num, error: null };
+}
+
+/**
+ * Parsea un número requerido (debe ser > 0)
+ */
+function parseRequiredNumber(value, fieldName = 'campo') {
+  const result = parseNumber(value, fieldName);
+  
+  if (result.error) {
+    return result;
+  }
+  
+  if (result.value === null || result.value <= 0) {
+    return { value: null, error: `${fieldName}: debe ser un número mayor a 0, recibido: "${value}"` };
+  }
+  
+  return result;
+}
+
 function parseFile(buffer, filename) {
   const extension = filename.toLowerCase().split('.').pop();
   
@@ -229,14 +339,22 @@ app.get('/api/test-connection', async (req, res) => {
   }
 });
 
-// Obtener lista de clientes (para OT)
+// Obtener lista de clientes (para OT) con su bodega
 app.get('/api/clientes', (req, res) => {
-  res.json({ success: true, clientes: CLIENTES });
+  const clientesConBodega = CLIENTES.map(cliente => ({
+    nombre: cliente,
+    bodega: getBodegaPorCliente(cliente)
+  }));
+  res.json({ success: true, clientes: CLIENTES, clientesConBodega });
 });
 
-// Obtener lista de proveedores (para OC)
+// Obtener lista de proveedores (para OC) con su bodega
 app.get('/api/proveedores', (req, res) => {
-  res.json({ success: true, proveedores: PROVEEDORES });
+  const proveedoresConBodega = PROVEEDORES.map(proveedor => ({
+    nombre: proveedor,
+    bodega: getBodegaPorCliente(proveedor)
+  }));
+  res.json({ success: true, proveedores: PROVEEDORES, proveedoresConBodega });
 });
 
 // ============================================================================
@@ -304,6 +422,99 @@ app.get('/api/oc-pendientes', async (req, res) => {
   }
 });
 
+// Obtener resumen de OC pendientes para ajuste de fecha
+app.get('/api/oc-resumen-pendientes', async (req, res) => {
+  try {
+    // Obtener todas las OC en estado Creado con sus totales
+    const { data, error } = await supabase
+      .from('Orden_Compra')
+      .select('Oc, Proveedor, Cantidad_Prod_Oc, Total, Fecha_Recepcion')
+      .eq('Estado', 'Creado')
+      .order('Proveedor')
+      .order('Oc');
+    
+    if (error) throw error;
+    
+    // Agrupar por Oc y sumar cantidades y totales
+    const resumenPorOC = {};
+    
+    data.forEach(item => {
+      const key = item.Oc;
+      if (!resumenPorOC[key]) {
+        resumenPorOC[key] = {
+          oc: item.Oc,
+          proveedor: item.Proveedor,
+          cantidad_total: 0,
+          monto_total: 0,
+          fecha_recepcion: item.Fecha_Recepcion
+        };
+      }
+      resumenPorOC[key].cantidad_total += parseFloat(item.Cantidad_Prod_Oc) || 0;
+      resumenPorOC[key].monto_total += parseFloat(item.Total) || 0;
+    });
+    
+    // Convertir a array y ordenar
+    const resultado = Object.values(resumenPorOC).sort((a, b) => {
+      const provA = a.proveedor || '';
+      const provB = b.proveedor || '';
+      if (provA !== provB) return provA.localeCompare(provB);
+      return String(a.oc).localeCompare(String(b.oc));
+    });
+    
+    res.json({ success: true, data: resultado });
+  } catch (error) {
+    console.error('Error obteniendo resumen OC pendientes:', error);
+    res.json({ success: true, data: [] });
+  }
+});
+
+// Actualizar fecha de recepción de una OC
+app.post('/api/oc/actualizar-fecha', async (req, res) => {
+  try {
+    const { oc, fecha_recepcion } = req.body;
+    
+    if (!oc) {
+      return res.status(400).json({ success: false, error: 'Número de OC requerido' });
+    }
+    
+    if (!fecha_recepcion) {
+      return res.status(400).json({ success: false, error: 'Fecha de recepción requerida' });
+    }
+    
+    // Parsear la fecha
+    const fechaParsed = parseDate(fecha_recepcion);
+    if (!fechaParsed) {
+      return res.status(400).json({ success: false, error: 'Formato de fecha inválido' });
+    }
+    
+    // Actualizar todas las líneas de la OC
+    const { data, error } = await supabase
+      .from('Orden_Compra')
+      .update({
+        Fecha_Recepcion: fechaParsed.split('T')[0] // Solo la fecha, sin hora
+      })
+      .eq('Oc', oc)
+      .eq('Estado', 'Creado')
+      .select('Id');
+    
+    if (error) throw error;
+    
+    const registrosActualizados = data ? data.length : 0;
+    
+    console.log(`✅ Fecha de recepción actualizada para OC ${oc}: ${fecha_recepcion} (${registrosActualizados} registros)`);
+    
+    res.json({ 
+      success: true, 
+      message: `Fecha actualizada para ${registrosActualizados} registros`,
+      registrosActualizados 
+    });
+    
+  } catch (error) {
+    console.error('Error actualizando fecha de recepción:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ============================================================================
 // CARGA DE OC (Orden de Compra)
 // Usa tabla existente: "Orden_Compra" con campos PascalCase
@@ -359,19 +570,24 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
         const idOc = cleanText(row.id_oc || row.Oc || row.oc || row.OC);
         const codProd = cleanText(row.cod_prod || row.Cod_Prod || row.codigo || row['Codigo De Venta(EAN)'] || row.PRODUCTO);
         const sku = cleanText(row.sku || row.SKU);
-        const cantidadOc = parseFloat(row.cantidad_oc || row.Cantidad_Prod_Oc || row['(CANTIDAD EAN COMPRA)'] || 0);
 
         if (!idOc || !codProd) {
           results.fallidos++;
-          results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (id_oc/Oc, cod_prod/Cod_Prod)`);
+          results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (Oc: "${idOc || 'vacío'}", Cod_Prod: "${codProd || 'vacío'}")`);
           continue;
         }
 
-        if (isNaN(cantidadOc) || cantidadOc <= 0) {
+        // Validar cantidad (obligatorio)
+        const cantidadResult = parseRequiredNumber(
+          row.cantidad_oc || row.Cantidad_Prod_Oc || row['(CANTIDAD EAN COMPRA)'],
+          'Cantidad_Prod_Oc'
+        );
+        if (cantidadResult.error) {
           results.fallidos++;
-          results.errores.push(`Fila ${rowNum}: cantidad_oc inválida`);
+          results.errores.push(`Fila ${rowNum}: ${cantidadResult.error}`);
           continue;
         }
+        const cantidadOc = cantidadResult.value;
 
         // Validar proveedor
         const proveedorValue = cleanText(row.proveedor || row.Proveedor || row['Nombre Proveedor']);
@@ -381,8 +597,53 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
           continue;
         }
 
-        // Generar ID único para el detalle (igual que en el proyecto anterior)
+        // Validar campos numéricos opcionales con mensajes claros
+        const precioUnitarioRaw = row.precio_unitario || row.Precio_Prod_Oc || row['PRECIO UNITARIO'];
+        const precioUnitarioResult = parseNumber(precioUnitarioRaw, 'Precio_Prod_Oc');
+        if (precioUnitarioResult.error) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: ${precioUnitarioResult.error}`);
+          continue;
+        }
+
+        const precioCajaRaw = row.precio_caja || row.Precio_Caja || row['Precio Compra CAJA'];
+        const precioCajaResult = parseNumber(precioCajaRaw, 'Precio_Caja');
+        if (precioCajaResult.error) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: ${precioCajaResult.error}`);
+          continue;
+        }
+
+        const cantidadCajaRaw = row.cantidad_caja || row.Cantidad_Caja || row['(CANTIDAD DUN COMPRA)'];
+        const cantidadCajaResult = parseNumber(cantidadCajaRaw, 'Cantidad_Caja');
+        if (cantidadCajaResult.error) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: ${cantidadCajaResult.error}`);
+          continue;
+        }
+
+        const uxcRaw = row.uxc || row.UXC;
+        const uxcResult = parseNumber(uxcRaw, 'UXC');
+        if (uxcResult.error) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: ${uxcResult.error}`);
+          continue;
+        }
+
+        const totalRaw = row.total || row.Total;
+        const totalResult = parseNumber(totalRaw, 'Total');
+        if (totalResult.error) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: ${totalResult.error}`);
+          continue;
+        }
+
+        // Generar ID único para el detalle
         const idDetOc = cleanText(row.Id_Det_OC || row.id_det_oc) || `${idOc}-${codProd}`;
+
+        // Determinar bodega automáticamente según el proveedor
+        const bodegaAutomatica = getBodegaPorCliente(proveedorValue);
+        const bodegaFinal = bodegaAutomatica || cleanText(row.bodega || row.Bodega) || 'Sin asignar';
 
         // Preparar datos para insertar - usando nombres de columna de la tabla existente
         const recordData = {
@@ -392,13 +653,13 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
           SKU: sku,
           Producto: cleanText(row.producto || row.Producto),
           Proveedor: proveedorValue,
-          Bodega: cleanText(row.bodega || row.Bodega),
-          Precio_Prod_Oc: parseFloat(row.precio_unitario || row.Precio_Prod_Oc || row['PRECIO UNITARIO'] || 0) || null,
-          Precio_Caja: parseFloat(row.precio_caja || row.Precio_Caja || row['Precio Compra CAJA'] || 0) || null,
+          Bodega: bodegaFinal,
+          Precio_Prod_Oc: precioUnitarioResult.value,
+          Precio_Caja: precioCajaResult.value,
           Cantidad_Prod_Oc: cantidadOc,
-          Cantidad_Caja: parseFloat(row.cantidad_caja || row.Cantidad_Caja || row['(CANTIDAD DUN COMPRA)'] || 0) || null,
-          UXC: parseFloat(row.uxc || row.UXC || 0) || null,
-          Total: parseFloat(row.total || row.Total || 0) || null,
+          Cantidad_Caja: cantidadCajaResult.value,
+          UXC: uxcResult.value,
+          Total: totalResult.value,
           Fecha_Creacion: cleanText(row.fecha_creacion || row.Fecha_Creacion || row['Fecha Creacion']) || new Date().toISOString().split('T')[0],
           Fecha_Recepcion: cleanText(row.fecha_recepcion_esperada || row.Fecha_Recepcion || row['Fecha Recepcion']),
           Estado: 'Creado',
@@ -580,6 +841,99 @@ async function actualizarEstadoOC(idOc) {
 // ============================================================================
 // ENDPOINTS API - ORDEN DE TRANSFERENCIA (OT)
 // ============================================================================
+
+// Obtener resumen de OT pendientes para ajuste de fecha
+app.get('/api/ot-resumen-pendientes', async (req, res) => {
+  try {
+    // Obtener todas las OT en estado Solicitado o Preparado
+    const { data, error } = await supabase
+      .from('transfer_orders')
+      .select('id_ot, cliente, estado, cantidad_solicitada, fecha_transferencia_comprometida')
+      .in('estado', ['Solicitado', 'Preparado'])
+      .order('cliente')
+      .order('id_ot');
+    
+    if (error) throw error;
+    
+    // Agrupar por id_ot y sumar cantidades
+    const resumenPorOT = {};
+    
+    data.forEach(item => {
+      const key = item.id_ot;
+      if (!resumenPorOT[key]) {
+        resumenPorOT[key] = {
+          id_ot: item.id_ot,
+          cliente: item.cliente,
+          estado: item.estado,
+          cantidad_total: 0,
+          fecha_transferencia_comprometida: item.fecha_transferencia_comprometida
+        };
+      }
+      resumenPorOT[key].cantidad_total += parseFloat(item.cantidad_solicitada) || 0;
+    });
+    
+    // Convertir a array y ordenar por cliente, luego por id_ot
+    const resultado = Object.values(resumenPorOT).sort((a, b) => {
+      const clienteA = a.cliente || '';
+      const clienteB = b.cliente || '';
+      if (clienteA !== clienteB) return clienteA.localeCompare(clienteB);
+      return String(a.id_ot).localeCompare(String(b.id_ot));
+    });
+    
+    res.json({ success: true, data: resultado });
+  } catch (error) {
+    console.error('Error obteniendo resumen OT pendientes:', error);
+    res.json({ success: true, data: [] });
+  }
+});
+
+// Actualizar fecha comprometida de una OT
+app.post('/api/ot/actualizar-fecha', async (req, res) => {
+  try {
+    const { id_ot, fecha_transferencia_comprometida } = req.body;
+    
+    if (!id_ot) {
+      return res.status(400).json({ success: false, error: 'ID de OT requerido' });
+    }
+    
+    if (!fecha_transferencia_comprometida) {
+      return res.status(400).json({ success: false, error: 'Fecha comprometida requerida' });
+    }
+    
+    // Parsear la fecha
+    const fechaParsed = parseDate(fecha_transferencia_comprometida);
+    if (!fechaParsed) {
+      return res.status(400).json({ success: false, error: 'Formato de fecha inválido' });
+    }
+    
+    // Actualizar todas las líneas de la OT que estén en Solicitado o Preparado
+    const { data, error } = await supabase
+      .from('transfer_orders')
+      .update({
+        fecha_transferencia_comprometida: fechaParsed,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id_ot', id_ot)
+      .in('estado', ['Solicitado', 'Preparado'])
+      .select('id_ot');
+    
+    if (error) throw error;
+    
+    const registrosActualizados = data ? data.length : 0;
+    
+    console.log(`✅ Fecha comprometida actualizada para OT ${id_ot}: ${fecha_transferencia_comprometida} (${registrosActualizados} registros)`);
+    
+    res.json({ 
+      success: true, 
+      message: `Fecha actualizada para ${registrosActualizados} registros`,
+      registrosActualizados 
+    });
+    
+  } catch (error) {
+    console.error('Error actualizando fecha comprometida OT:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 // Obtener OT pendientes
 app.get('/api/ot-pendientes', async (req, res) => {
@@ -780,22 +1134,22 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
     // Agrupar registros por id_ot para procesar OT completas
     const registrosPorOT = {};
     const skusPorOT = {};
-    
+
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
       const rowNum = i + 2;
 
-      if (!row.id_ot || !row.sku) {
-        results.fallidos++;
-        results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (id_ot, sku)`);
-        continue;
-      }
+        if (!row.id_ot || !row.sku) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (id_ot, sku)`);
+          continue;
+        }
 
-      if (!row.cantidad_preparada || isNaN(parseFloat(row.cantidad_preparada))) {
-        results.fallidos++;
-        results.errores.push(`Fila ${rowNum}: cantidad_preparada inválida`);
-        continue;
-      }
+        if (!row.cantidad_preparada || isNaN(parseFloat(row.cantidad_preparada))) {
+          results.fallidos++;
+          results.errores.push(`Fila ${rowNum}: cantidad_preparada inválida`);
+          continue;
+        }
 
       const idOt = String(row.id_ot).trim();
       const sku = String(row.sku).trim();
@@ -839,17 +1193,17 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
         // 1. Actualizar productos INCLUIDOS en el archivo
         for (const registro of registrosPorOT[idOt]) {
           const { error } = await supabase
-            .from('transfer_orders')
-            .update({
+          .from('transfer_orders')
+          .update({
               fecha_preparacion: registro.fecha_preparacion,
               cantidad_preparada: registro.cantidad_preparada,
-              estado: 'Preparado',
+            estado: 'Preparado',
               updated_at: fechaActualizacion
-            })
+          })
             .eq('id_ot', idOt)
             .eq('sku', registro.sku);
 
-          if (error) {
+        if (error) {
             results.fallidos++;
             results.errores.push(`Fila ${registro.rowNum}: ${error.message}`);
           } else {
