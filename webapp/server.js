@@ -14,6 +14,14 @@ if (fs.existsSync(envPath)) {
   console.log('☁️  Modo producción: usando variables de entorno del sistema');
 }
 
+// DEBUG: Mostrar variables de entorno disponibles (sin valores sensibles)
+console.log('🔍 DEBUG - Variables de entorno detectadas:');
+console.log('   SUPABASE_URL existe:', !!process.env.SUPABASE_URL);
+console.log('   SUPABASE_ANON_KEY existe:', !!process.env.SUPABASE_ANON_KEY);
+console.log('   PORT:', process.env.PORT || '(no definido, usando 3000)');
+console.log('   NODE_ENV:', process.env.NODE_ENV || '(no definido)');
+console.log('   Todas las variables que empiezan con SUPA:', Object.keys(process.env).filter(k => k.startsWith('SUPA')));
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
