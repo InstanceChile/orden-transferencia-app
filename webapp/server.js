@@ -3,7 +3,17 @@
 // Módulos: Orden de Compra (OC) y Orden de Transferencia (OT)
 // ============================================================================
 
-require('dotenv').config();
+// Cargar .env solo si existe (desarrollo local)
+const dotenv = require('dotenv');
+const fs = require('fs');
+const envPath = require('path').join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log('📁 Archivo .env cargado desde:', envPath);
+} else {
+  console.log('☁️  Modo producción: usando variables de entorno del sistema');
+}
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
