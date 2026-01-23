@@ -126,6 +126,8 @@ function initTabsForModule(moduleId) {
           loadOCPendientes();
         } else if (tabId === 'oc-ajuste-fecha') {
           loadOCParaAjuste();
+        } else if (tabId === 'oc-recepciones') {
+          loadOCRecepciones();
         }
       }
     });
@@ -974,6 +976,375 @@ document.addEventListener('keydown', (e) => {
     closeModal();
   }
 });
+
+// ============================================================================
+// RECEPCIONES OC - Últimos 30 días
+// ============================================================================
+
+async function loadOCRecepciones() {
+  try {
+    const response = await fetch(`${API_BASE}/api/oc-recepciones`);
+    const data = await response.json();
+    
+    const tbody = document.getElementById('tbody-oc-recepciones');
+    const emptyState = document.getElementById('tabla-recepciones-empty');
+    const tablaScroll = document.querySelector('.tabla-recepciones-scroll');
+    
+    if (!tbody) return;
+    
+    if (data.success && data.data && data.data.length > 0) {
+      // Renderizar filas con onclick para abrir detalle
+      tbody.innerHTML = data.data.map(item => {
+        // Determinar clase de alerta
+        let alertaClass = '';
+        if (item.alertas && item.alertas !== '-') {
+          alertaClass = 'tiene-alertas';
+        }
+        
+        // Determinar clase de fill rate
+        let fillRateClass = '';
+        if (item.fill_rate >= 100) {
+          fillRateClass = 'fill-rate-completo';
+        } else if (item.fill_rate >= 80) {
+          fillRateClass = 'fill-rate-alto';
+        } else if (item.fill_rate >= 50) {
+          fillRateClass = 'fill-rate-medio';
+        } else {
+          fillRateClass = 'fill-rate-bajo';
+        }
+        
+        return `
+          <tr class="${alertaClass} clickable-row" onclick="abrirDetalleRecepcion('${item.oc}', '${item.proveedor}')" title="Clic para ver detalle y editar">
+            <td class="fecha">${formatFecha(item.fecha_actualizacion)}</td>
+            <td>${item.proveedor}</td>
+            <td><strong>${item.oc}</strong></td>
+            <td class="text-right monto">$${formatNumber(item.valorizado_ingreso)}</td>
+            <td class="text-right ${fillRateClass}">${item.fill_rate.toFixed(2)}%</td>
+            <td class="alertas-cell">${formatAlertas(item.alertas)}</td>
+          </tr>
+        `;
+      }).join('');
+      
+      if (tablaScroll) tablaScroll.style.display = 'block';
+      if (emptyState) emptyState.classList.remove('visible');
+      
+      // Calcular y mostrar resumen
+      calcularResumenRecepciones(data.data);
+      
+    } else {
+      tbody.innerHTML = '';
+      if (tablaScroll) tablaScroll.style.display = 'none';
+      if (emptyState) emptyState.classList.add('visible');
+      
+      // Limpiar resumen
+      document.getElementById('resumen-total-recepciones').textContent = '0';
+      document.getElementById('resumen-valorizado-total').textContent = '$0';
+      document.getElementById('resumen-fill-rate').textContent = '0%';
+      document.getElementById('resumen-con-alertas').textContent = '0';
+    }
+    
+  } catch (error) {
+    console.error('Error cargando recepciones OC:', error);
+  }
+}
+
+function calcularResumenRecepciones(datos) {
+  const totalRecepciones = datos.length;
+  const valorizadoTotal = datos.reduce((sum, item) => sum + item.valorizado_ingreso, 0);
+  const fillRatePromedio = datos.length > 0 
+    ? datos.reduce((sum, item) => sum + item.fill_rate, 0) / datos.length 
+    : 0;
+  const conAlertas = datos.filter(item => item.alertas && item.alertas !== '-').length;
+  
+  document.getElementById('resumen-total-recepciones').textContent = formatNumber(totalRecepciones);
+  document.getElementById('resumen-valorizado-total').textContent = `$${formatNumber(valorizadoTotal)}`;
+  document.getElementById('resumen-fill-rate').textContent = `${fillRatePromedio.toFixed(2)}%`;
+  document.getElementById('resumen-con-alertas').textContent = formatNumber(conAlertas);
+}
+
+function formatAlertas(alertas) {
+  if (!alertas || alertas === '-') {
+    return '<span class="sin-alertas">✓</span>';
+  }
+  
+  // Separar las alertas y formatearlas con badges
+  const partes = alertas.split(', ');
+  return partes.map(alerta => {
+    if (alerta.includes('Precio')) {
+      return `<span class="alerta-badge alerta-precio">${alerta}</span>`;
+    } else if (alerta.includes('Sobre Recepción')) {
+      return `<span class="alerta-badge alerta-sobre-recepcion">${alerta}</span>`;
+    }
+    return `<span class="alerta-badge">${alerta}</span>`;
+  }).join(' ');
+}
+
+// ============================================================================
+// DETALLE DE RECEPCIÓN OC - Modal con edición
+// ============================================================================
+
+let detalleOCActual = null; // Datos actuales del detalle
+let cambiosPendientes = {}; // Cambios realizados por el usuario
+
+async function abrirDetalleRecepcion(oc, proveedor) {
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/oc-detalle/${encodeURIComponent(oc)}`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener detalle');
+    }
+    
+    detalleOCActual = data;
+    cambiosPendientes = {};
+    
+    // Actualizar título del modal
+    document.getElementById('detalleModalTitle').textContent = `Detalle OC ${oc}`;
+    document.getElementById('detalleModalSubtitle').textContent = proveedor;
+    
+    // Actualizar totales
+    actualizarTotalesDetalle(data.totales);
+    
+    // Renderizar tabla de productos
+    renderizarTablaDetalle(data.productos);
+    
+    // Mostrar modal
+    document.getElementById('detalleRecepcionModal').classList.add('active');
+    
+  } catch (error) {
+    console.error('Error abriendo detalle:', error);
+    alert('Error al cargar el detalle de la OC: ' + error.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+function actualizarTotalesDetalle(totales) {
+  document.getElementById('totalOcCompra').textContent = `$${formatNumber(totales.total_oc)}`;
+  document.getElementById('totalRecepcion').textContent = `$${formatNumber(totales.total_recepcion)}`;
+  document.getElementById('totalProductos').textContent = `${totales.productos_recepcionados} / ${totales.productos_total}`;
+  document.getElementById('totalConAlertas').textContent = totales.productos_con_alertas;
+}
+
+function renderizarTablaDetalle(productos) {
+  const tbody = document.getElementById('tbodyDetalleRecepcion');
+  
+  tbody.innerHTML = productos.map(p => {
+    // Formatear alertas
+    let alertasHtml = '';
+    if (p.alertas && p.alertas.length > 0) {
+      alertasHtml = p.alertas.map(a => {
+        let clase = 'alerta-badge';
+        if (a.tipo === 'precio') clase += ' alerta-precio';
+        else if (a.tipo === 'sobre_recepcion') clase += ' alerta-sobre-recepcion';
+        else if (a.tipo === 'sin_recepcion') clase += ' alerta-sin-recepcion';
+        return `<span class="${clase}" title="${a.mensaje}">${getTipoAlertaIcono(a.tipo)}</span>`;
+      }).join(' ');
+    } else {
+      alertasHtml = '<span class="sin-alertas">✓</span>';
+    }
+    
+    // Determinar si tiene alertas
+    const rowClass = p.alertas && p.alertas.length > 0 ? 'tiene-alertas' : '';
+    
+    return `
+      <tr class="${rowClass}" data-id="${p.id}" data-cod="${p.cod_prod}">
+        <td class="cod-prod"><code>${p.cod_prod}</code></td>
+        <td class="producto-nombre" title="${p.producto || ''}">${truncarTexto(p.producto, 30)}</td>
+        <td class="text-right">${formatNumber(p.precio_caja)}</td>
+        <td class="text-right">${formatNumber(p.cantidad_caja)}</td>
+        <td class="text-right monto">$${formatNumber(p.total_oc)}</td>
+        <td class="text-right editable" onclick="hacerEditable(this, '${p.id}', 'precio_prod_recepcion', ${p.precio_prod_recepcion})">
+          <span class="editable-value">${formatNumber(p.precio_prod_recepcion)}</span>
+        </td>
+        <td class="text-right editable" onclick="hacerEditable(this, '${p.id}', 'cant_prod_recepcion', ${p.cant_prod_recepcion})">
+          <span class="editable-value">${formatNumber(p.cant_prod_recepcion)}</span>
+        </td>
+        <td class="text-right monto total-recep">${formatNumber(p.total_recepcion)}</td>
+        <td class="alertas-cell">${alertasHtml}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function getTipoAlertaIcono(tipo) {
+  switch(tipo) {
+    case 'precio': return '💰';
+    case 'sobre_recepcion': return '⚠️';
+    case 'sin_recepcion': return '❌';
+    default: return '⚠️';
+  }
+}
+
+function truncarTexto(texto, maxLength) {
+  if (!texto) return '-';
+  if (texto.length <= maxLength) return texto;
+  return texto.substring(0, maxLength) + '...';
+}
+
+function hacerEditable(celda, id, campo, valorActual) {
+  // Si ya hay un input, no hacer nada
+  if (celda.querySelector('input')) return;
+  
+  const valorMostrado = celda.querySelector('.editable-value');
+  const valorNumerico = parseFloat(String(valorActual).replace(/\./g, '').replace(',', '.')) || 0;
+  
+  // Crear input
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'editable-input';
+  input.value = valorNumerico;
+  input.step = campo === 'precio_prod_recepcion' ? '0.01' : '1';
+  input.min = '0';
+  
+  // Guardar valor original para cancelar
+  input.dataset.originalValue = valorNumerico;
+  input.dataset.id = id;
+  input.dataset.campo = campo;
+  
+  // Ocultar span y mostrar input
+  valorMostrado.style.display = 'none';
+  celda.appendChild(input);
+  input.focus();
+  input.select();
+  
+  // Eventos
+  input.addEventListener('blur', () => guardarValorEditado(celda, input));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === 'Escape') {
+      cancelarEdicion(celda, input);
+    }
+  });
+}
+
+function guardarValorEditado(celda, input) {
+  const id = input.dataset.id;
+  const campo = input.dataset.campo;
+  const valorOriginal = parseFloat(input.dataset.originalValue);
+  const valorNuevo = parseFloat(input.value) || 0;
+  
+  // Restaurar span
+  const valorMostrado = celda.querySelector('.editable-value');
+  valorMostrado.textContent = formatNumber(valorNuevo);
+  valorMostrado.style.display = '';
+  
+  // Remover input
+  input.remove();
+  
+  // Marcar como modificado si cambió
+  if (valorNuevo !== valorOriginal) {
+    celda.classList.add('modificado');
+    
+    // Guardar cambio pendiente
+    if (!cambiosPendientes[id]) {
+      cambiosPendientes[id] = { id };
+    }
+    cambiosPendientes[id][campo] = valorNuevo;
+    
+    // Recalcular total de recepción de esa fila
+    recalcularTotalFila(celda.closest('tr'));
+  }
+}
+
+function cancelarEdicion(celda, input) {
+  const valorOriginal = parseFloat(input.dataset.originalValue);
+  const valorMostrado = celda.querySelector('.editable-value');
+  valorMostrado.textContent = formatNumber(valorOriginal);
+  valorMostrado.style.display = '';
+  input.remove();
+}
+
+function recalcularTotalFila(fila) {
+  const celdas = fila.querySelectorAll('.editable .editable-value');
+  const precioRecep = parseFloat(String(celdas[0].textContent).replace(/\./g, '').replace(',', '.')) || 0;
+  const cantRecep = parseFloat(String(celdas[1].textContent).replace(/\./g, '').replace(',', '.')) || 0;
+  const totalRecep = precioRecep * cantRecep;
+  
+  const celdaTotal = fila.querySelector('.total-recep');
+  if (celdaTotal) {
+    celdaTotal.textContent = formatNumber(totalRecep);
+  }
+  
+  // Recalcular totales generales
+  recalcularTotalesGenerales();
+}
+
+function recalcularTotalesGenerales() {
+  const filas = document.querySelectorAll('#tbodyDetalleRecepcion tr');
+  let totalRecepcion = 0;
+  let productosRecepcionados = 0;
+  
+  filas.forEach(fila => {
+    const celdas = fila.querySelectorAll('.editable .editable-value');
+    const precioRecep = parseFloat(String(celdas[0].textContent).replace(/\./g, '').replace(',', '.')) || 0;
+    const cantRecep = parseFloat(String(celdas[1].textContent).replace(/\./g, '').replace(',', '.')) || 0;
+    
+    totalRecepcion += precioRecep * cantRecep;
+    if (cantRecep > 0) productosRecepcionados++;
+  });
+  
+  document.getElementById('totalRecepcion').textContent = `$${formatNumber(totalRecepcion)}`;
+  document.getElementById('totalProductos').textContent = `${productosRecepcionados} / ${filas.length}`;
+}
+
+async function guardarCambiosRecepcion() {
+  const productosModificados = Object.values(cambiosPendientes);
+  
+  if (productosModificados.length === 0) {
+    alert('No hay cambios pendientes para guardar');
+    return;
+  }
+  
+  if (!confirm(`¿Guardar cambios en ${productosModificados.length} producto(s)?`)) {
+    return;
+  }
+  
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/oc/actualizar-recepciones-batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ productos: productosModificados })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(`✅ ${result.results.exitosos} producto(s) actualizado(s) correctamente`);
+      
+      // Cerrar modal y recargar datos
+      closeDetalleModal();
+      loadOCRecepciones();
+      
+    } else {
+      let errorMsg = result.message || 'Error al guardar cambios';
+      if (result.results?.errores && result.results.errores.length > 0) {
+        errorMsg += '\n\nErrores:\n' + result.results.errores.join('\n');
+      }
+      alert('⚠️ ' + errorMsg);
+    }
+    
+  } catch (error) {
+    console.error('Error guardando cambios:', error);
+    alert('Error de conexión: ' + error.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+function closeDetalleModal() {
+  document.getElementById('detalleRecepcionModal').classList.remove('active');
+  detalleOCActual = null;
+  cambiosPendientes = {};
+}
 
 // Cargar stats iniciales según módulo activo
 if (currentModule === 'oc') {

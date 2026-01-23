@@ -433,6 +433,390 @@ app.get('/api/oc-pendientes', async (req, res) => {
   }
 });
 
+// ============================================================================
+// RECEPCIONES DE OC - Últimos 30 días
+// ============================================================================
+app.get('/api/oc-recepciones', async (req, res) => {
+  try {
+    // Calcular fecha de hace 30 días
+    const hace30Dias = new Date();
+    hace30Dias.setDate(hace30Dias.getDate() - 30);
+    const fechaLimite = hace30Dias.toISOString();
+
+    // Obtener recepciones de los últimos 30 días
+    // - Fecha_Actualizacion_Recepcion no nulo
+    // - Estado diferente a "Creado"
+    const { data, error } = await supabase
+      .from('Orden_Compra')
+      .select('Oc, Proveedor, Fecha_Actualizacion_Recepcion, Cant_Prod_Recepcion, Precio_Prod_Recepcion, Cantidad_Prod_Oc, Precio_Prod_Oc')
+      .not('Fecha_Actualizacion_Recepcion', 'is', null)
+      .neq('Estado', 'Creado')
+      .gte('Fecha_Actualizacion_Recepcion', fechaLimite)
+      .order('Fecha_Actualizacion_Recepcion', { ascending: false });
+
+    if (error) throw error;
+
+    // Primero, obtener el proveedor de cada OC (tomando el primer registro que tenga proveedor)
+    const proveedoresPorOC = {};
+    const ocsUnicas = [...new Set(data.map(item => item.Oc))];
+    
+    // Si hay OCs sin proveedor en los datos, buscar el proveedor directamente en la tabla
+    for (const oc of ocsUnicas) {
+      const itemConProveedor = data.find(item => item.Oc === oc && item.Proveedor);
+      if (itemConProveedor) {
+        proveedoresPorOC[oc] = itemConProveedor.Proveedor;
+      }
+    }
+    
+    // Para las OCs que no tengan proveedor, buscar en la base de datos
+    const ocsSinProveedor = ocsUnicas.filter(oc => !proveedoresPorOC[oc]);
+    if (ocsSinProveedor.length > 0) {
+      const { data: proveedoresData } = await supabase
+        .from('Orden_Compra')
+        .select('Oc, Proveedor')
+        .in('Oc', ocsSinProveedor)
+        .not('Proveedor', 'is', null)
+        .limit(ocsSinProveedor.length);
+      
+      if (proveedoresData) {
+        proveedoresData.forEach(item => {
+          if (!proveedoresPorOC[item.Oc] && item.Proveedor) {
+            proveedoresPorOC[item.Oc] = item.Proveedor;
+          }
+        });
+      }
+    }
+
+    // Agrupar por Fecha_Actualizacion_Recepcion (solo fecha, sin hora) y Oc
+    // El proveedor se toma del mapa anterior
+    const agrupado = {};
+
+    data.forEach(item => {
+      // Extraer solo la fecha (sin hora) de Fecha_Actualizacion_Recepcion
+      const fechaCompleta = item.Fecha_Actualizacion_Recepcion;
+      const fechaSolo = fechaCompleta ? fechaCompleta.split('T')[0] : null;
+      
+      if (!fechaSolo) return;
+
+      // Agrupar solo por fecha y OC (no por proveedor)
+      const key = `${fechaSolo}|${item.Oc}`;
+      
+      // Obtener el proveedor del mapa, o del item actual, o "Sin proveedor"
+      const proveedor = proveedoresPorOC[item.Oc] || item.Proveedor || 'Sin proveedor';
+
+      if (!agrupado[key]) {
+        agrupado[key] = {
+          fecha_actualizacion: fechaSolo,
+          proveedor: proveedor,
+          oc: item.Oc,
+          valorizado_ingreso: 0,
+          suma_recepcion_valor: 0,
+          suma_oc_valor: 0,
+          alertas_precio: 0,
+          alertas_sobre_recepcion: 0
+        };
+      }
+
+      // Obtener valores, usar 1 si no hay precio
+      const cantRecepcion = parseFloat(item.Cant_Prod_Recepcion) || 0;
+      const precioRecepcion = parseFloat(item.Precio_Prod_Recepcion) || 1;
+      const cantOc = parseFloat(item.Cantidad_Prod_Oc) || 0;
+      const precioOc = parseFloat(item.Precio_Prod_Oc) || 1;
+
+      // Valorizado Ingreso: Cant_Prod_Recepcion * Precio_Prod_Recepcion * 1.19
+      agrupado[key].valorizado_ingreso += cantRecepcion * precioRecepcion * 1.19;
+
+      // Para Fill Rate: sumar Cant_Prod_Recepcion * Precio_Prod_Recepcion
+      agrupado[key].suma_recepcion_valor += cantRecepcion * precioRecepcion;
+      // Para Fill Rate: sumar Cantidad_Prod_Oc * Precio_Prod_Oc
+      agrupado[key].suma_oc_valor += cantOc * precioOc;
+
+      // Alerta Precio: Precio_Prod_Oc <> Precio_Prod_Recepcion
+      const precioOcReal = parseFloat(item.Precio_Prod_Oc);
+      const precioRecReal = parseFloat(item.Precio_Prod_Recepcion);
+      if (precioOcReal && precioRecReal && precioOcReal !== precioRecReal) {
+        agrupado[key].alertas_precio++;
+      }
+
+      // Alerta Sobre Recepción: Cant_Prod_Recepcion > Cantidad_Prod_Oc
+      if (cantRecepcion > cantOc && cantOc > 0) {
+        agrupado[key].alertas_sobre_recepcion++;
+      }
+    });
+
+    // Convertir a array y calcular Fill Rate
+    const resultado = Object.values(agrupado).map(item => {
+      // Fill Rate = suma(Cant_Prod_Recepcion * Precio_Prod_Recepcion) / suma(Cantidad_Prod_Oc * Precio_Prod_Oc)
+      const fillRate = item.suma_oc_valor > 0 
+        ? (item.suma_recepcion_valor / item.suma_oc_valor) * 100 
+        : 0;
+
+      // Construir alertas
+      let alertas = [];
+      if (item.alertas_precio > 0) {
+        alertas.push(`Precio: ${item.alertas_precio}`);
+      }
+      if (item.alertas_sobre_recepcion > 0) {
+        alertas.push(`Sobre Recepción: ${item.alertas_sobre_recepcion}`);
+      }
+
+      return {
+        fecha_actualizacion: item.fecha_actualizacion,
+        proveedor: item.proveedor,
+        oc: item.oc,
+        valorizado_ingreso: Math.round(item.valorizado_ingreso),
+        fill_rate: Math.round(fillRate * 100) / 100, // 2 decimales
+        alertas: alertas.join(', ') || '-'
+      };
+    });
+
+    // Ordenar por fecha de más reciente a más antiguo
+    resultado.sort((a, b) => {
+      const fechaA = new Date(a.fecha_actualizacion);
+      const fechaB = new Date(b.fecha_actualizacion);
+      return fechaB - fechaA;
+    });
+
+    res.json({ success: true, data: resultado });
+
+  } catch (error) {
+    console.error('Error obteniendo recepciones OC:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// DETALLE DE RECEPCIÓN OC - Para edición
+// ============================================================================
+app.get('/api/oc-detalle/:oc', async (req, res) => {
+  try {
+    const { oc } = req.params;
+    
+    if (!oc) {
+      return res.status(400).json({ success: false, error: 'Número de OC requerido' });
+    }
+
+    // Obtener todos los productos de la OC
+    const { data, error } = await supabase
+      .from('Orden_Compra')
+      .select('Id, Oc, Cod_Prod, Producto, Proveedor, Precio_Caja, Cantidad_Caja, Precio_Prod_Oc, Cantidad_Prod_Oc, Precio_Prod_Recepcion, Cant_Prod_Recepcion, Estado, Fecha_Actualizacion_Recepcion')
+      .eq('Oc', oc)
+      .order('Cod_Prod');
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ success: false, error: 'OC no encontrada' });
+    }
+
+    // Procesar cada producto y calcular alertas
+    const productos = data.map(item => {
+      const precioCaja = parseFloat(item.Precio_Caja) || 0;
+      const cantidadCaja = parseFloat(item.Cantidad_Caja) || 0;
+      const precioOc = parseFloat(item.Precio_Prod_Oc) || 0;
+      const cantidadOc = parseFloat(item.Cantidad_Prod_Oc) || 0;
+      const precioRecepcion = parseFloat(item.Precio_Prod_Recepcion) || 0;
+      const cantidadRecepcion = parseFloat(item.Cant_Prod_Recepcion) || 0;
+
+      // Calcular totales
+      const totalOc = precioCaja * cantidadCaja;
+      const totalRecepcion = precioRecepcion * cantidadRecepcion;
+
+      // Determinar alertas
+      let alertas = [];
+      
+      // Alerta de precio diferente
+      if (precioOc > 0 && precioRecepcion > 0 && precioOc !== precioRecepcion) {
+        alertas.push({
+          tipo: 'precio',
+          mensaje: `Precio OC: ${precioOc} ≠ Precio Recepción: ${precioRecepcion}`
+        });
+      }
+
+      // Alerta de sobre recepción
+      if (cantidadRecepcion > cantidadOc && cantidadOc > 0) {
+        alertas.push({
+          tipo: 'sobre_recepcion',
+          mensaje: `Recepcionado: ${cantidadRecepcion} > Solicitado: ${cantidadOc}`
+        });
+      }
+
+      // Alerta de sin recepción (producto no recibido)
+      if (cantidadRecepcion === 0 && cantidadOc > 0) {
+        alertas.push({
+          tipo: 'sin_recepcion',
+          mensaje: 'Producto no recepcionado'
+        });
+      }
+
+      return {
+        id: item.Id,
+        cod_prod: item.Cod_Prod,
+        producto: item.Producto,
+        proveedor: item.Proveedor,
+        precio_caja: precioCaja,
+        cantidad_caja: cantidadCaja,
+        total_oc: totalOc,
+        precio_prod_oc: precioOc,
+        cantidad_prod_oc: cantidadOc,
+        precio_prod_recepcion: precioRecepcion,
+        cant_prod_recepcion: cantidadRecepcion,
+        total_recepcion: totalRecepcion,
+        estado: item.Estado,
+        fecha_actualizacion: item.Fecha_Actualizacion_Recepcion,
+        alertas: alertas
+      };
+    });
+
+    // Calcular totales generales
+    const totales = {
+      total_oc: productos.reduce((sum, p) => sum + p.total_oc, 0),
+      total_recepcion: productos.reduce((sum, p) => sum + p.total_recepcion, 0),
+      productos_total: productos.length,
+      productos_recepcionados: productos.filter(p => p.cant_prod_recepcion > 0).length,
+      productos_con_alertas: productos.filter(p => p.alertas.length > 0).length
+    };
+
+    res.json({ 
+      success: true, 
+      oc: oc,
+      proveedor: data[0]?.Proveedor || 'Sin proveedor',
+      productos: productos,
+      totales: totales
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo detalle OC:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// ACTUALIZAR RECEPCIÓN DE PRODUCTO INDIVIDUAL
+// ============================================================================
+app.post('/api/oc/actualizar-recepcion', async (req, res) => {
+  try {
+    const { id, cant_prod_recepcion, precio_prod_recepcion } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, error: 'ID del producto requerido' });
+    }
+
+    // Preparar datos de actualización
+    const updateData = {
+      Fecha_Actualizacion_Recepcion: new Date().toISOString()
+    };
+
+    if (cant_prod_recepcion !== undefined) {
+      updateData.Cant_Prod_Recepcion = parseFloat(cant_prod_recepcion) || 0;
+    }
+
+    if (precio_prod_recepcion !== undefined) {
+      updateData.Precio_Prod_Recepcion = parseFloat(precio_prod_recepcion) || null;
+    }
+
+    // Actualizar el producto
+    const { data, error } = await supabase
+      .from('Orden_Compra')
+      .update(updateData)
+      .eq('Id', id)
+      .select('Oc');
+
+    if (error) throw error;
+
+    // Si se actualizó, recalcular estado de la OC
+    if (data && data.length > 0) {
+      await actualizarEstadoOC(data[0].Oc);
+    }
+
+    console.log(`✅ Recepción actualizada para producto ${id}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Recepción actualizada correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error actualizando recepción:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// ACTUALIZAR MÚLTIPLES RECEPCIONES (batch)
+// ============================================================================
+app.post('/api/oc/actualizar-recepciones-batch', async (req, res) => {
+  try {
+    const { productos } = req.body;
+
+    if (!productos || !Array.isArray(productos) || productos.length === 0) {
+      return res.status(400).json({ success: false, error: 'Lista de productos requerida' });
+    }
+
+    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    let ocActualizada = null;
+
+    for (const producto of productos) {
+      try {
+        if (!producto.id) {
+          results.fallidos++;
+          results.errores.push(`Producto sin ID`);
+          continue;
+        }
+
+        const updateData = {
+          Fecha_Actualizacion_Recepcion: new Date().toISOString()
+        };
+
+        if (producto.cant_prod_recepcion !== undefined) {
+          updateData.Cant_Prod_Recepcion = parseFloat(producto.cant_prod_recepcion) || 0;
+        }
+
+        if (producto.precio_prod_recepcion !== undefined) {
+          updateData.Precio_Prod_Recepcion = parseFloat(producto.precio_prod_recepcion) || null;
+        }
+
+        const { data, error } = await supabase
+          .from('Orden_Compra')
+          .update(updateData)
+          .eq('Id', producto.id)
+          .select('Oc');
+
+        if (error) {
+          results.fallidos++;
+          results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
+        } else {
+          results.exitosos++;
+          if (data && data.length > 0) {
+            ocActualizada = data[0].Oc;
+          }
+        }
+
+      } catch (error) {
+        results.fallidos++;
+        results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
+      }
+    }
+
+    // Recalcular estado de la OC
+    if (ocActualizada) {
+      await actualizarEstadoOC(ocActualizada);
+    }
+
+    console.log(`✅ Batch de recepciones actualizado: ${results.exitosos} exitosos, ${results.fallidos} fallidos`);
+
+    res.json({ 
+      success: results.fallidos === 0,
+      message: `${results.exitosos} productos actualizados correctamente`,
+      results
+    });
+
+  } catch (error) {
+    console.error('Error actualizando recepciones batch:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Obtener resumen de OC pendientes para ajuste de fecha
 app.get('/api/oc-resumen-pendientes', async (req, res) => {
   try {

@@ -1426,3 +1426,397 @@ body::before {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
 }
+
+/* ============================================================================
+   RECEPCIONES OC - Panel de visualización
+   ============================================================================ */
+
+.recepciones-container {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: var(--spacing-xl);
+}
+
+@media (max-width: 1200px) {
+  .recepciones-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tabla-recepciones-wrapper {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  overflow: hidden;
+}
+
+.tabla-recepciones-scroll {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.recepciones-table {
+  min-width: 700px;
+}
+
+.recepciones-table th,
+.recepciones-table td {
+  white-space: nowrap;
+}
+
+.recepciones-table .text-right {
+  text-align: right;
+}
+
+/* Fill Rate colors */
+.fill-rate-completo {
+  color: var(--accent-secondary) !important;
+  font-weight: 600;
+}
+
+.fill-rate-alto {
+  color: #4ade80 !important;
+}
+
+.fill-rate-medio {
+  color: var(--accent-warning) !important;
+}
+
+.fill-rate-bajo {
+  color: var(--accent-danger) !important;
+  font-weight: 600;
+}
+
+/* Alertas */
+.alertas-cell {
+  min-width: 180px;
+}
+
+.sin-alertas {
+  display: inline-block;
+  color: var(--accent-secondary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.alerta-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+
+.alerta-precio {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+  border: 1px solid var(--accent-danger);
+}
+
+.alerta-sobre-recepcion {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--accent-warning);
+  border: 1px solid var(--accent-warning);
+}
+
+.tiene-alertas {
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.tiene-alertas:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Resumen de recepciones */
+.recepciones-resumen {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  height: fit-content;
+  position: sticky;
+  top: 100px;
+}
+
+.recepciones-resumen h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-primary);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.resumen-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.resumen-stat {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.resumen-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resumen-value {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.resumen-stat.alertas .resumen-value {
+  color: var(--accent-warning);
+}
+
+/* ============================================================================
+   MODAL DETALLE RECEPCIÓN OC
+   ============================================================================ */
+
+.modal-detalle .modal-content-large {
+  width: 95%;
+  max-width: 1200px;
+  max-height: 90vh;
+}
+
+.modal-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.modal-body-detalle {
+  padding: var(--spacing-lg);
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+/* Totales del detalle */
+.detalle-totales {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
+}
+
+@media (max-width: 768px) {
+  .detalle-totales {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.total-card {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  border: 1px solid var(--border-color);
+}
+
+.total-card.alertas {
+  border-color: var(--accent-warning);
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.total-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.total-value {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.total-card.alertas .total-value {
+  color: var(--accent-warning);
+}
+
+/* Tabla de detalle */
+.detalle-tabla-wrapper {
+  overflow-x: auto;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.detalle-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  min-width: 900px;
+}
+
+.detalle-tabla th {
+  background: var(--bg-card);
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.detalle-tabla th.editable-header {
+  background: rgba(0, 212, 255, 0.15);
+  color: var(--accent-primary);
+}
+
+.detalle-tabla td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.detalle-tabla tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.detalle-tabla .cod-prod code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.detalle-tabla .producto-nombre {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detalle-tabla .text-right {
+  text-align: right;
+}
+
+.detalle-tabla .monto {
+  font-family: var(--font-mono);
+  color: var(--accent-secondary);
+}
+
+/* Celdas editables */
+.detalle-tabla td.editable {
+  cursor: pointer;
+  background: rgba(0, 212, 255, 0.08);
+  position: relative;
+  transition: background var(--transition-fast);
+}
+
+.detalle-tabla td.editable:hover {
+  background: rgba(0, 212, 255, 0.15);
+}
+
+.detalle-tabla td.editable .editable-value {
+  font-family: var(--font-mono);
+  color: var(--accent-cyan);
+}
+
+.detalle-tabla td.editable.modificado {
+  background: rgba(74, 222, 128, 0.15);
+}
+
+.detalle-tabla td.editable.modificado .editable-value {
+  color: var(--accent-secondary);
+  font-weight: 600;
+}
+
+.editable-input {
+  width: 100%;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border: 2px solid var(--accent-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  text-align: right;
+  outline: none;
+}
+
+.editable-input:focus {
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3);
+}
+
+/* Alertas en tabla detalle */
+.detalle-tabla .alertas-cell {
+  min-width: 80px;
+  text-align: center;
+}
+
+.alerta-sin-recepcion {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+  border: 1px solid var(--accent-danger);
+}
+
+/* Footer del modal de detalle */
+.modal-footer-detalle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.footer-left {
+  flex: 1;
+}
+
+.footer-right {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.edit-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* Filas clickables en tabla de recepciones */
+.clickable-row {
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.clickable-row:hover {
+  background: rgba(0, 212, 255, 0.1) !important;
+  transform: translateX(2px);
+}
+
+.clickable-row:active {
+  transform: translateX(0);
+}
