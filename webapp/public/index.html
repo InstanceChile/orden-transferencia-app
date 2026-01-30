@@ -175,6 +175,7 @@
                           <th>OC</th>
                           <th class="text-right">Valorizado Ingreso</th>
                           <th class="text-right">Fill Rate</th>
+                          <th class="text-right">Fill Rate Acum. (30d)</th>
                           <th>Alertas</th>
                         </tr>
                       </thead>
@@ -352,6 +353,10 @@
                 <span class="tab-icon">📅</span>
                 <span class="tab-text">Ajustar Fecha</span>
               </button>
+              <button class="tab-btn tab-btn-action" data-tab="ot-transferencias">
+                <span class="tab-icon">📊</span>
+                <span class="tab-text">Transferencias</span>
+              </button>
             </div>
           </nav>
 
@@ -405,6 +410,63 @@
                     <span class="btn-icon">💾</span>
                     Actualizar Fecha
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- OT Transferencias Panel -->
+            <div class="tab-panel" id="panel-ot-transferencias">
+              <div class="panel-header">
+                <div class="panel-info">
+                  <h2>📊 Transferencias (Últimos 30 días)</h2>
+                  <p>Historial de transferencias completadas agrupadas por fecha, cliente y OT</p>
+                </div>
+                <button class="btn btn-secondary" onclick="loadOTTransferencias()">
+                  <span class="btn-icon">🔄</span>
+                  Actualizar
+                </button>
+              </div>
+              
+              <div class="recepciones-container">
+                <div class="tabla-recepciones-wrapper">
+                  <div class="tabla-scroll tabla-recepciones-scroll">
+                    <table class="oc-table recepciones-table" id="tabla-ot-transferencias">
+                      <thead>
+                        <tr>
+                          <th>Fecha Actualización</th>
+                          <th>Cliente</th>
+                          <th>N° OT</th>
+                          <th class="text-right">Total Unidades</th>
+                          <th class="text-right">Fill Rate</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-ot-transferencias">
+                        <!-- Se carga dinámicamente -->
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="tabla-empty" id="tabla-ot-transferencias-empty">
+                    <span>📭</span>
+                    <p>No hay transferencias en los últimos 30 días</p>
+                  </div>
+                </div>
+                
+                <div class="recepciones-resumen" id="transferencias-resumen">
+                  <h4>Resumen</h4>
+                  <div class="resumen-stats">
+                    <div class="resumen-stat">
+                      <span class="resumen-label">Total Transferencias</span>
+                      <span class="resumen-value" id="ot-total-transferencias">0</span>
+                    </div>
+                    <div class="resumen-stat">
+                      <span class="resumen-label">Total Unidades</span>
+                      <span class="resumen-value" id="ot-total-unidades">0</span>
+                    </div>
+                    <div class="resumen-stat">
+                      <span class="resumen-label">Fill Rate Promedio</span>
+                      <span class="resumen-value" id="ot-fill-rate-promedio">0%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -650,8 +712,8 @@
               <tr>
                 <th>Cod Prod</th>
                 <th>Producto</th>
-                <th class="text-right">Precio Caja</th>
-                <th class="text-right">Cant. Caja</th>
+                <th class="text-right">Precio Prod OC</th>
+                <th class="text-right">Cant. Prod OC</th>
                 <th class="text-right">Total OC</th>
                 <th class="text-right editable-header">Precio Recep.</th>
                 <th class="text-right editable-header">Cant. Recep.</th>
@@ -670,8 +732,86 @@
           <span class="edit-hint">💡 Haz clic en las celdas azules para editar valores</span>
         </div>
         <div class="footer-right">
+          <button class="btn btn-success" onclick="descargarExcelRecepcion()">
+            <span class="btn-icon">📥</span>
+            Descargar Excel
+          </button>
           <button class="btn btn-secondary" onclick="closeDetalleModal()">Cancelar</button>
           <button class="btn btn-primary" id="btnGuardarCambios" onclick="guardarCambiosRecepcion()">
+            <span class="btn-icon">💾</span>
+            Guardar Cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Detalle Transferencia OT -->
+  <div class="modal modal-detalle" id="detalleTransferenciaModal">
+    <div class="modal-content modal-content-detalle">
+      <div class="modal-header modal-header-detalle">
+        <div class="modal-header-info">
+          <h3 id="detalleOTModalTitle">Detalle de Transferencia</h3>
+          <span class="modal-subtitle" id="detalleOTModalSubtitle"></span>
+        </div>
+        <button class="modal-close" onclick="closeDetalleOTModal()">&times;</button>
+      </div>
+      <div class="modal-body modal-body-detalle" id="detalleOTModalBody">
+        <!-- Totales resumen -->
+        <div class="detalle-totales" id="detalleOTTotales">
+          <div class="total-card">
+            <span class="total-label">Total Preparación</span>
+            <span class="total-value" id="totalOTPreparacion">0</span>
+          </div>
+          <div class="total-card">
+            <span class="total-label">Total Recepción</span>
+            <span class="total-value" id="totalOTRecepcion">0</span>
+          </div>
+          <div class="total-card">
+            <span class="total-label">Valorizado Total</span>
+            <span class="total-value" id="totalOTValorizado">$0</span>
+          </div>
+          <div class="total-card">
+            <span class="total-label">Productos Recepcionados</span>
+            <span class="total-value" id="totalOTProductos">0 / 0</span>
+          </div>
+          <div class="total-card alertas">
+            <span class="total-label">Con Alertas</span>
+            <span class="total-value" id="totalOTConAlertas">0</span>
+          </div>
+        </div>
+        
+        <!-- Tabla de detalle -->
+        <div class="detalle-tabla-wrapper">
+          <table class="detalle-tabla" id="tablaDetalleTransferencia">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>SKU</th>
+                <th>Nombre</th>
+                <th class="text-right">Valorizado</th>
+                <th class="text-right">Cant. Preparada</th>
+                <th class="text-right editable-header">Cant. Recepcionada</th>
+                <th>Alerta</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyDetalleTransferencia">
+              <!-- Se carga dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer modal-footer-detalle">
+        <div class="footer-left">
+          <span class="edit-hint">💡 Haz clic en las celdas azules para editar la cantidad recepcionada</span>
+        </div>
+        <div class="footer-right">
+          <button class="btn btn-success" onclick="descargarExcelTransferencia()">
+            <span class="btn-icon">📥</span>
+            Descargar Excel
+          </button>
+          <button class="btn btn-secondary" onclick="closeDetalleOTModal()">Cancelar</button>
+          <button class="btn btn-primary" id="btnGuardarCambiosOT" onclick="guardarCambiosTransferencia()">
             <span class="btn-icon">💾</span>
             Guardar Cambios
           </button>
@@ -688,6 +828,8 @@
     </div>
   </div>
 
+  <!-- SheetJS para exportar Excel -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

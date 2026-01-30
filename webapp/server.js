@@ -544,12 +544,45 @@ app.get('/api/oc-recepciones', async (req, res) => {
       }
     });
 
+    // Calcular Fill Rate acumulado por proveedor (todos los últimos 30 días)
+    const fillRateAcumuladoPorProveedor = {};
+    data.forEach(item => {
+      const proveedor = proveedoresPorOC[item.Oc] || item.Proveedor || 'Sin proveedor';
+      
+      if (!fillRateAcumuladoPorProveedor[proveedor]) {
+        fillRateAcumuladoPorProveedor[proveedor] = {
+          suma_recepcion_valor: 0,
+          suma_oc_valor: 0
+        };
+      }
+      
+      const cantRecepcion = parseFloat(item.Cant_Prod_Recepcion) || 0;
+      const precioRecepcion = parseFloat(item.Precio_Prod_Recepcion) || 1;
+      const cantOc = parseFloat(item.Cantidad_Prod_Oc) || 0;
+      const precioOc = parseFloat(item.Precio_Prod_Oc) || 1;
+      
+      fillRateAcumuladoPorProveedor[proveedor].suma_recepcion_valor += cantRecepcion * precioRecepcion;
+      fillRateAcumuladoPorProveedor[proveedor].suma_oc_valor += cantOc * precioOc;
+    });
+    
+    // Calcular el porcentaje para cada proveedor
+    const fillRateProveedor = {};
+    Object.keys(fillRateAcumuladoPorProveedor).forEach(proveedor => {
+      const datos = fillRateAcumuladoPorProveedor[proveedor];
+      fillRateProveedor[proveedor] = datos.suma_oc_valor > 0 
+        ? (datos.suma_recepcion_valor / datos.suma_oc_valor) * 100 
+        : 0;
+    });
+
     // Convertir a array y calcular Fill Rate
     const resultado = Object.values(agrupado).map(item => {
       // Fill Rate = suma(Cant_Prod_Recepcion * Precio_Prod_Recepcion) / suma(Cantidad_Prod_Oc * Precio_Prod_Oc)
       const fillRate = item.suma_oc_valor > 0 
         ? (item.suma_recepcion_valor / item.suma_oc_valor) * 100 
         : 0;
+
+      // Fill Rate acumulado del proveedor
+      const fillRateAcum = fillRateProveedor[item.proveedor] || 0;
 
       // Construir alertas
       let alertas = [];
@@ -566,6 +599,7 @@ app.get('/api/oc-recepciones', async (req, res) => {
         oc: item.oc,
         valorizado_ingreso: Math.round(item.valorizado_ingreso),
         fill_rate: Math.round(fillRate * 100) / 100, // 2 decimales
+        fill_rate_acumulado: Math.round(fillRateAcum * 100) / 100, // Fill Rate acumulado del proveedor
         alertas: alertas.join(', ') || '-'
       };
     });
@@ -747,67 +781,125 @@ app.post('/api/oc/actualizar-recepcion', async (req, res) => {
 // ============================================================================
 app.post('/api/oc/actualizar-recepciones-batch', async (req, res) => {
   try {
-    const { productos } = req.body;
+    const { productos, oc } = req.body;
 
     if (!productos || !Array.isArray(productos) || productos.length === 0) {
       return res.status(400).json({ success: false, error: 'Lista de productos requerida' });
     }
 
     const results = { exitosos: 0, fallidos: 0, errores: [] };
-    let ocActualizada = null;
+    let ocActualizada = oc || null;
+    const fechaActualizacion = new Date().toISOString();
 
+    // Crear un mapa de los productos que se están actualizando (con cambios explícitos)
+    const productosConCambios = {};
     for (const producto of productos) {
-      try {
-        if (!producto.id) {
-          results.fallidos++;
-          results.errores.push(`Producto sin ID`);
-          continue;
-        }
-
-        const updateData = {
-          Fecha_Actualizacion_Recepcion: new Date().toISOString()
-        };
-
-        if (producto.cant_prod_recepcion !== undefined) {
-          updateData.Cant_Prod_Recepcion = parseFloat(producto.cant_prod_recepcion) || 0;
-        }
-
-        if (producto.precio_prod_recepcion !== undefined) {
-          updateData.Precio_Prod_Recepcion = parseFloat(producto.precio_prod_recepcion) || null;
-        }
-
-        const { data, error } = await supabase
-          .from('Orden_Compra')
-          .update(updateData)
-          .eq('Id', producto.id)
-          .select('Oc');
-
-        if (error) {
-          results.fallidos++;
-          results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
-        } else {
-          results.exitosos++;
-          if (data && data.length > 0) {
-            ocActualizada = data[0].Oc;
-          }
-        }
-
-      } catch (error) {
-        results.fallidos++;
-        results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
+      if (producto.id) {
+        productosConCambios[producto.id] = producto;
       }
     }
 
-    // Recalcular estado de la OC
+    // Si tenemos el número de OC, obtener TODOS los productos de la OC
     if (ocActualizada) {
-      await actualizarEstadoOC(ocActualizada);
+      const { data: todosProductos, error: errorObtener } = await supabase
+        .from('Orden_Compra')
+        .select('Id, Cod_Prod')
+        .eq('Oc', ocActualizada);
+
+      if (errorObtener) {
+        console.error('Error obteniendo productos de la OC:', errorObtener);
+      } else if (todosProductos) {
+        // Actualizar TODOS los productos de la OC
+        for (const prod of todosProductos) {
+          try {
+            const updateData = {
+              Fecha_Actualizacion_Recepcion: fechaActualizacion,
+              Estado: 'Recepcionado'
+            };
+
+            // Si este producto tiene cambios explícitos, aplicarlos
+            if (productosConCambios[prod.Id]) {
+              const cambios = productosConCambios[prod.Id];
+              if (cambios.cant_prod_recepcion !== undefined) {
+                updateData.Cant_Prod_Recepcion = parseFloat(cambios.cant_prod_recepcion) || 0;
+              }
+              if (cambios.precio_prod_recepcion !== undefined) {
+                updateData.Precio_Prod_Recepcion = parseFloat(cambios.precio_prod_recepcion) || null;
+              }
+            } else {
+              // Producto sin cambios explícitos: poner cantidad en 0 (no recepcionado)
+              updateData.Cant_Prod_Recepcion = 0;
+            }
+
+            const { error } = await supabase
+              .from('Orden_Compra')
+              .update(updateData)
+              .eq('Id', prod.Id);
+
+            if (error) {
+              results.fallidos++;
+              results.errores.push(`${prod.Cod_Prod || prod.Id}: ${error.message}`);
+            } else {
+              results.exitosos++;
+            }
+
+          } catch (error) {
+            results.fallidos++;
+            results.errores.push(`${prod.Cod_Prod || prod.Id}: ${error.message}`);
+          }
+        }
+      }
+    } else {
+      // Fallback: si no tenemos OC, actualizar solo los productos enviados
+      for (const producto of productos) {
+        try {
+          if (!producto.id) {
+            results.fallidos++;
+            results.errores.push(`Producto sin ID`);
+            continue;
+          }
+
+          const updateData = {
+            Fecha_Actualizacion_Recepcion: fechaActualizacion,
+            Estado: 'Recepcionado'
+          };
+
+          if (producto.cant_prod_recepcion !== undefined) {
+            updateData.Cant_Prod_Recepcion = parseFloat(producto.cant_prod_recepcion) || 0;
+          }
+
+          if (producto.precio_prod_recepcion !== undefined) {
+            updateData.Precio_Prod_Recepcion = parseFloat(producto.precio_prod_recepcion) || null;
+          }
+
+          const { data, error } = await supabase
+            .from('Orden_Compra')
+            .update(updateData)
+            .eq('Id', producto.id)
+            .select('Oc');
+
+          if (error) {
+            results.fallidos++;
+            results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
+          } else {
+            results.exitosos++;
+            if (data && data.length > 0 && !ocActualizada) {
+              ocActualizada = data[0].Oc;
+            }
+          }
+
+        } catch (error) {
+          results.fallidos++;
+          results.errores.push(`${producto.cod_prod || producto.id}: ${error.message}`);
+        }
+      }
     }
 
-    console.log(`✅ Batch de recepciones actualizado: ${results.exitosos} exitosos, ${results.fallidos} fallidos`);
+    console.log(`✅ Recepción cerrada para OC ${ocActualizada}: ${results.exitosos} productos actualizados, ${results.fallidos} fallidos`);
 
     res.json({ 
       success: results.fallidos === 0,
-      message: `${results.exitosos} productos actualizados correctamente`,
+      message: `OC ${ocActualizada} cerrada. ${results.exitosos} productos actualizados.`,
       results
     });
 
@@ -1237,6 +1329,325 @@ async function actualizarEstadoOC(idOc) {
 // ENDPOINTS API - ORDEN DE TRANSFERENCIA (OT)
 // ============================================================================
 
+// ============================================================================
+// TRANSFERENCIAS DE OT - Últimos 30 días
+// ============================================================================
+app.get('/api/ot-transferencias', async (req, res) => {
+  try {
+    // Calcular fecha de hace 30 días
+    const hace30Dias = new Date();
+    hace30Dias.setDate(hace30Dias.getDate() - 30);
+    const fechaLimite = hace30Dias.toISOString();
+
+    // Obtener transferencias de los últimos 30 días
+    // - Estados de entrega (Entregado_Sin_Novedad o Entregado_con_Novedad)
+    const { data, error } = await supabase
+      .from('transfer_orders')
+      .select('id_ot, cliente, updated_at, cantidad_preparada, cantidad_recepcionada, estado')
+      .in('estado', ['Entregado_Sin_Novedad', 'Entregado_con_Novedad'])
+      .gte('updated_at', fechaLimite)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Agrupar por fecha (solo fecha, sin hora), cliente y id_ot
+    const agrupado = {};
+
+    data.forEach(item => {
+      // Extraer solo la fecha (sin hora) de updated_at
+      const fechaCompleta = item.updated_at;
+      const fechaSolo = fechaCompleta ? fechaCompleta.split('T')[0] : null;
+      
+      if (!fechaSolo) return;
+
+      const key = `${fechaSolo}|${item.cliente || 'Sin cliente'}|${item.id_ot}`;
+
+      if (!agrupado[key]) {
+        agrupado[key] = {
+          fecha_actualizacion: fechaSolo,
+          cliente: item.cliente || 'Sin cliente',
+          id_ot: item.id_ot,
+          total_unidades: 0,
+          suma_preparada: 0,
+          suma_recepcionada: 0
+        };
+      }
+
+      // Sumar cantidades
+      const cantPreparada = parseFloat(item.cantidad_preparada) || 0;
+      const cantRecepcionada = parseFloat(item.cantidad_recepcionada) || 0;
+
+      agrupado[key].total_unidades += cantRecepcionada;
+      agrupado[key].suma_preparada += cantPreparada;
+      agrupado[key].suma_recepcionada += cantRecepcionada;
+    });
+
+    // Convertir a array y calcular Fill Rate
+    const resultado = Object.values(agrupado).map(item => {
+      // Fill Rate = suma(cantidad_recepcionada) / suma(cantidad_preparada)
+      const fillRate = item.suma_preparada > 0 
+        ? (item.suma_recepcionada / item.suma_preparada) * 100 
+        : 0;
+
+      return {
+        fecha_actualizacion: item.fecha_actualizacion,
+        cliente: item.cliente,
+        id_ot: item.id_ot,
+        total_unidades: Math.round(item.total_unidades),
+        fill_rate: Math.round(fillRate * 100) / 100 // 2 decimales
+      };
+    });
+
+    // Ordenar por fecha de más reciente a más antiguo
+    resultado.sort((a, b) => {
+      const fechaA = new Date(a.fecha_actualizacion);
+      const fechaB = new Date(b.fecha_actualizacion);
+      return fechaB - fechaA;
+    });
+
+    res.json({ success: true, data: resultado });
+
+  } catch (error) {
+    console.error('Error obteniendo transferencias OT:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// DETALLE DE TRANSFERENCIA OT - Para edición
+// ============================================================================
+app.get('/api/ot-detalle/:id_ot', async (req, res) => {
+  try {
+    const { id_ot } = req.params;
+    
+    if (!id_ot) {
+      return res.status(400).json({ success: false, error: 'ID de OT requerido' });
+    }
+
+    // Obtener todos los productos de la OT
+    const { data, error } = await supabase
+      .from('transfer_orders')
+      .select('id, id_ot, sku, cliente, cantidad_preparada, cantidad_recepcionada, estado')
+      .eq('id_ot', id_ot)
+      .order('sku');
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ success: false, error: 'OT no encontrada' });
+    }
+
+    // Obtener SKUs únicos - los SKUs en transfer_orders tienen un "1" al inicio que hay que quitar
+    // Ejemplo: transfer_orders tiene "17802200270388", PIM tiene "7802200270388"
+    const skusOriginales = [...new Set(data.map(item => item.sku).filter(s => s))];
+    
+    // Crear mapa de SKU original -> SKU para PIM (sin el 1 inicial si tiene 14 dígitos)
+    const skuOriginalAPim = {};
+    const skusParaPIM = [];
+    
+    skusOriginales.forEach(sku => {
+      // Si el SKU tiene 14 dígitos y empieza con "1", quitar el "1" para buscar en PIM
+      if (sku.length === 14 && sku.startsWith('1')) {
+        const skuSinUno = sku.substring(1);
+        skuOriginalAPim[sku] = skuSinUno;
+        skusParaPIM.push(skuSinUno);
+      } else {
+        // SKU de 13 dígitos u otro formato, usar tal cual
+        skuOriginalAPim[sku] = sku;
+        skusParaPIM.push(sku);
+      }
+    });
+    
+    console.log('=== DETALLE OT:', id_ot, '===');
+    console.log('SKUs originales (primeros 3):', skusOriginales.slice(0, 3));
+    console.log('SKUs para PIM (primeros 3):', skusParaPIM.slice(0, 3));
+    
+    // Buscar en PIM por columna 'sku' - sin límite de filas
+    const { data: pimData, error: pimError } = await supabase
+      .from('PIM')
+      .select('sku, Tipo, Nombre, Precio_base')
+      .in('sku', skusParaPIM)
+      .limit(10000);
+    
+    console.log('PIM encontrados:', pimData?.length || 0);
+    if (pimError) {
+      console.error('Error PIM:', pimError);
+    }
+
+    // Crear mapa de PIM indexado por SKU de PIM
+    const pimMapPorSkuPim = {};
+    if (pimData && pimData.length > 0) {
+      pimData.forEach(pim => {
+        if (pim.sku) {
+          // Limpiar precio: reemplazar coma por punto y eliminar caracteres no numéricos
+          let precioBase = 0;
+          if (pim.Precio_base) {
+            const precioLimpio = pim.Precio_base.replace(',', '.').replace(/[^0-9.\-]/g, '');
+            precioBase = parseFloat(precioLimpio) || 0;
+          }
+          
+          pimMapPorSkuPim[pim.sku] = {
+            tipo: pim.Tipo || '',
+            nombre: pim.Nombre || '',
+            precio_base: precioBase
+          };
+        }
+      });
+    }
+    
+    // Crear mapa final indexado por SKU original de transfer_orders
+    const pimMap = {};
+    skusOriginales.forEach(skuOriginal => {
+      const skuPim = skuOriginalAPim[skuOriginal];
+      if (pimMapPorSkuPim[skuPim]) {
+        pimMap[skuOriginal] = pimMapPorSkuPim[skuPim];
+      }
+    });
+    
+    console.log('PIM Map creado:', Object.keys(pimMap).length, 'entradas');
+    console.log('========================');
+
+    // Procesar cada producto y calcular alertas
+    const productos = data.map(item => {
+      const cantPreparada = parseFloat(item.cantidad_preparada) || 0;
+      const cantRecepcionada = parseFloat(item.cantidad_recepcionada) || 0;
+      
+      // Obtener datos del PIM
+      const pimInfo = pimMap[item.sku] || { tipo: '', nombre: '', precio_base: 0 };
+      
+      // Calcular valorizado (cantidad_recepcionada x precio_base)
+      const valorizado = cantRecepcionada * pimInfo.precio_base;
+
+      // Determinar alerta: cantidad_preparada <> cantidad_recepcionada
+      let alerta = null;
+      if (cantPreparada !== cantRecepcionada) {
+        const diferencia = cantRecepcionada - cantPreparada;
+        alerta = {
+          tipo: diferencia > 0 ? 'exceso' : 'faltante',
+          mensaje: `Preparado: ${cantPreparada} ≠ Recepcionado: ${cantRecepcionada}`,
+          diferencia: diferencia
+        };
+      }
+
+      return {
+        id: item.id,
+        tipo: pimInfo.tipo,
+        sku: item.sku,
+        nombre: pimInfo.nombre,
+        precio_base: pimInfo.precio_base,
+        valorizado: valorizado,
+        cantidad_preparada: cantPreparada,
+        cantidad_recepcionada: cantRecepcionada,
+        estado: item.estado,
+        alerta: alerta
+      };
+    });
+
+    // Calcular totales generales
+    const totales = {
+      total_preparacion: productos.reduce((sum, p) => sum + p.cantidad_preparada, 0),
+      total_recepcion: productos.reduce((sum, p) => sum + p.cantidad_recepcionada, 0),
+      total_valorizado: productos.reduce((sum, p) => sum + p.valorizado, 0),
+      productos_total: productos.length,
+      productos_recepcionados: productos.filter(p => p.cantidad_recepcionada > 0).length,
+      productos_con_alertas: productos.filter(p => p.alerta !== null).length
+    };
+
+    res.json({ 
+      success: true, 
+      id_ot: id_ot,
+      cliente: data[0]?.cliente || 'Sin cliente',
+      productos: productos,
+      totales: totales
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo detalle OT:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// ACTUALIZAR RECEPCIÓN DE TRANSFERENCIA OT - Batch
+// ============================================================================
+app.post('/api/ot/actualizar-recepciones-batch', async (req, res) => {
+  try {
+    const { productos, id_ot } = req.body;
+
+    if (!productos || !Array.isArray(productos) || productos.length === 0) {
+      return res.status(400).json({ success: false, error: 'Lista de productos requerida' });
+    }
+
+    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    const fechaActualizacion = new Date().toISOString();
+
+    for (const producto of productos) {
+      try {
+        if (!producto.id) {
+          results.fallidos++;
+          results.errores.push(`Producto sin ID`);
+          continue;
+        }
+
+        // Obtener cantidad_preparada para determinar el estado
+        const { data: otData } = await supabase
+          .from('transfer_orders')
+          .select('cantidad_preparada')
+          .eq('id', producto.id)
+          .single();
+
+        const cantRecepcionada = parseFloat(producto.cantidad_recepcionada) || 0;
+        const cantPreparada = otData?.cantidad_preparada || 0;
+
+        // Determinar estado según diferencia
+        let estado = 'Entregado_Sin_Novedad';
+        if (cantPreparada > 0) {
+          const diferencia = Math.abs(cantPreparada - cantRecepcionada);
+          const porcentaje = diferencia / cantPreparada;
+          if (porcentaje > 0.05) {
+            estado = 'Entregado_con_Novedad';
+          }
+        }
+
+        const updateData = {
+          cantidad_recepcionada: cantRecepcionada,
+          fecha_recepcion: fechaActualizacion,
+          estado: estado,
+          updated_at: fechaActualizacion
+        };
+
+        const { error } = await supabase
+          .from('transfer_orders')
+          .update(updateData)
+          .eq('id', producto.id);
+
+        if (error) {
+          results.fallidos++;
+          results.errores.push(`${producto.sku || producto.id}: ${error.message}`);
+        } else {
+          results.exitosos++;
+        }
+
+      } catch (error) {
+        results.fallidos++;
+        results.errores.push(`${producto.sku || producto.id}: ${error.message}`);
+      }
+    }
+
+    console.log(`✅ Recepciones OT ${id_ot} actualizadas: ${results.exitosos} exitosos, ${results.fallidos} fallidos`);
+
+    res.json({ 
+      success: results.fallidos === 0,
+      message: `${results.exitosos} productos actualizados correctamente`,
+      results
+    });
+
+  } catch (error) {
+    console.error('Error actualizando recepciones OT batch:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Obtener resumen de OT pendientes para ajuste de fecha
 app.get('/api/ot-resumen-pendientes', async (req, res) => {
   try {
@@ -1569,7 +1980,7 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
         // Obtener TODOS los SKUs de esta OT en estado Solicitado
         const { data: productosOT, error: fetchError } = await supabase
           .from('transfer_orders')
-          .select('sku')
+          .select('sku, cliente')
           .eq('id_ot', idOt)
           .eq('estado', 'Solicitado');
 
@@ -1577,56 +1988,87 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
           throw new Error(`Error obteniendo productos de OT ${idOt}: ${fetchError.message}`);
         }
 
-        if (!productosOT || productosOT.length === 0) {
-          results.errores.push(`OT ${idOt}: No se encontraron productos pendientes de preparación`);
-          continue;
+        // Obtener el cliente de la OT (para productos nuevos)
+        let clienteOT = null;
+        if (productosOT && productosOT.length > 0) {
+          clienteOT = productosOT.find(p => p.cliente)?.cliente || null;
         }
 
         const fechaActualizacion = new Date().toISOString();
         const skusIncluidos = skusPorOT[idOt];
+        const skusExistentes = new Set((productosOT || []).map(p => p.sku));
 
-        // 1. Actualizar productos INCLUIDOS en el archivo
+        // 1. Procesar productos INCLUIDOS en el archivo
         for (const registro of registrosPorOT[idOt]) {
-          const { error } = await supabase
-          .from('transfer_orders')
-          .update({
-              fecha_preparacion: registro.fecha_preparacion,
-              cantidad_preparada: registro.cantidad_preparada,
-            estado: 'Preparado',
-              updated_at: fechaActualizacion
-          })
-            .eq('id_ot', idOt)
-            .eq('sku', registro.sku);
+          if (skusExistentes.has(registro.sku)) {
+            // SKU existe -> UPDATE
+            const { error } = await supabase
+              .from('transfer_orders')
+              .update({
+                fecha_preparacion: registro.fecha_preparacion,
+                cantidad_preparada: registro.cantidad_preparada,
+                estado: 'Preparado',
+                updated_at: fechaActualizacion
+              })
+              .eq('id_ot', idOt)
+              .eq('sku', registro.sku);
 
-        if (error) {
-            results.fallidos++;
-            results.errores.push(`Fila ${registro.rowNum}: ${error.message}`);
+            if (error) {
+              results.fallidos++;
+              results.errores.push(`Fila ${registro.rowNum}: ${error.message}`);
+            } else {
+              results.exitosos++;
+            }
           } else {
-            results.exitosos++;
+            // SKU NO existe -> INSERT como producto nuevo (agregado en preparación)
+            const { error } = await supabase
+              .from('transfer_orders')
+              .insert({
+                id_ot: idOt,
+                sku: registro.sku,
+                cliente: clienteOT,
+                cantidad_solicitada: 0,  // No fue solicitado originalmente
+                fecha_solicitud: fechaActualizacion,
+                fecha_preparacion: registro.fecha_preparacion,
+                cantidad_preparada: registro.cantidad_preparada,
+                estado: 'Preparado',
+                updated_at: fechaActualizacion
+              });
+
+            if (error) {
+              results.fallidos++;
+              results.errores.push(`Fila ${registro.rowNum} (nuevo): ${error.message}`);
+            } else {
+              results.exitosos++;
+              results.nuevos = (results.nuevos || 0) + 1;
+              console.log(`📦 Producto nuevo agregado en OT ${idOt}: SKU ${registro.sku} (cantidad: ${registro.cantidad_preparada})`);
+            }
           }
         }
 
-        // 2. Actualizar productos NO INCLUIDOS a cantidad_preparada = 0
-        const skusNoIncluidos = productosOT
-          .map(p => p.sku)
-          .filter(sku => !skusIncluidos.has(sku));
+        // 2. Actualizar productos NO INCLUIDOS a cantidad_preparada = 0 (solo los que existían)
+        if (productosOT && productosOT.length > 0) {
+          const skusNoIncluidos = productosOT
+            .map(p => p.sku)
+            .filter(sku => !skusIncluidos.has(sku));
 
-        if (skusNoIncluidos.length > 0) {
-          const { error: updateError } = await supabase
-            .from('transfer_orders')
-            .update({
-              fecha_preparacion: fechaActualizacion,
-              cantidad_preparada: 0,
-              estado: 'Preparado',
-              updated_at: fechaActualizacion
-            })
-            .eq('id_ot', idOt)
-            .in('sku', skusNoIncluidos);
+          if (skusNoIncluidos.length > 0) {
+            const { error: updateError } = await supabase
+              .from('transfer_orders')
+              .update({
+                fecha_preparacion: fechaActualizacion,
+                cantidad_preparada: 0,
+                estado: 'Preparado',
+                updated_at: fechaActualizacion
+              })
+              .eq('id_ot', idOt)
+              .in('sku', skusNoIncluidos);
 
-          if (updateError) {
-            results.errores.push(`OT ${idOt}: Error actualizando SKUs no incluidos: ${updateError.message}`);
-          } else {
-            results.noIncluidos += skusNoIncluidos.length;
+            if (updateError) {
+              results.errores.push(`OT ${idOt}: Error actualizando SKUs no incluidos: ${updateError.message}`);
+            } else {
+              results.noIncluidos += skusNoIncluidos.length;
+            }
           }
         }
 
@@ -1636,9 +2078,13 @@ app.post('/api/upload/ota', upload.single('file'), async (req, res) => {
       }
     }
 
-    const mensaje = results.noIncluidos > 0 
-      ? `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos. ${results.noIncluidos} productos no incluidos marcados con cantidad 0.`
-      : `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`;
+    let mensaje = `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`;
+    if (results.nuevos > 0) {
+      mensaje += `. ${results.nuevos} productos nuevos agregados.`;
+    }
+    if (results.noIncluidos > 0) {
+      mensaje += ` ${results.noIncluidos} productos no incluidos marcados con cantidad 0.`;
+    }
 
     res.json({
       success: results.fallidos === 0,

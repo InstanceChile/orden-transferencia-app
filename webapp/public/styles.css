@@ -784,6 +784,19 @@ body::before {
   filter: brightness(1.1);
 }
 
+.btn-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  box-shadow: var(--shadow-sm);
+  border: none;
+}
+
+.btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+  filter: brightness(1.1);
+}
+
 .btn-secondary {
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -1819,4 +1832,73 @@ body::before {
 
 .clickable-row:active {
   transform: translateX(0);
+}
+
+/* ============================================================================
+   TABLA DETALLE TRANSFERENCIA OT - Estilos específicos
+   ============================================================================ */
+
+#tablaDetalleTransferencia {
+  min-width: auto;
+  width: 100%;
+}
+
+#tablaDetalleTransferencia th:nth-child(1) { /* Tipo */
+  width: 8%;
+}
+
+#tablaDetalleTransferencia th:nth-child(2) { /* SKU */
+  width: 15%;
+}
+
+#tablaDetalleTransferencia th:nth-child(3) { /* Nombre */
+  width: 25%;
+}
+
+#tablaDetalleTransferencia th:nth-child(4) { /* Valorizado */
+  width: 12%;
+}
+
+#tablaDetalleTransferencia th:nth-child(5), /* Cant. Preparada */
+#tablaDetalleTransferencia th:nth-child(6) { /* Cant. Recepcionada */
+  width: 14%;
+}
+
+#tablaDetalleTransferencia th:nth-child(7) { /* Alerta */
+  width: 12%;
+}
+
+#tablaDetalleTransferencia .sku code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+#tablaDetalleTransferencia .tipo {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+#tablaDetalleTransferencia .nombre {
+  font-size: 0.75rem;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tablaDetalleTransferencia .valorizado {
+  font-family: var(--font-mono);
+  color: var(--accent-secondary);
+  font-size: 0.8125rem;
+}
+
+#detalleTransferenciaModal .detalle-tabla-wrapper {
+  overflow-x: auto;
+}
+
+#detalleTransferenciaModal .modal-content-detalle {
+  max-width: 1000px;
 }
