@@ -120,6 +120,8 @@ function initTabsForModule(moduleId) {
           loadOTPendientes(tabId.toUpperCase());
         } else if (tabId === 'ot-ajuste-fecha') {
           loadOTParaAjuste();
+        } else if (tabId === 'ot-transferencias') {
+          loadOTTransferencias();
         }
       } else if (moduleId === 'module-oc') {
         if (tabId === 'oc-recepcion') {
@@ -1013,6 +1015,19 @@ async function loadOCRecepciones() {
           fillRateClass = 'fill-rate-bajo';
         }
         
+        // Determinar clase de fill rate acumulado
+        let fillRateAcumClass = '';
+        const fillRateAcum = item.fill_rate_acumulado || 0;
+        if (fillRateAcum >= 100) {
+          fillRateAcumClass = 'fill-rate-completo';
+        } else if (fillRateAcum >= 80) {
+          fillRateAcumClass = 'fill-rate-alto';
+        } else if (fillRateAcum >= 50) {
+          fillRateAcumClass = 'fill-rate-medio';
+        } else {
+          fillRateAcumClass = 'fill-rate-bajo';
+        }
+        
         return `
           <tr class="${alertaClass} clickable-row" onclick="abrirDetalleRecepcion('${item.oc}', '${item.proveedor}')" title="Clic para ver detalle y editar">
             <td class="fecha">${formatFecha(item.fecha_actualizacion)}</td>
@@ -1020,6 +1035,7 @@ async function loadOCRecepciones() {
             <td><strong>${item.oc}</strong></td>
             <td class="text-right monto">$${formatNumber(item.valorizado_ingreso)}</td>
             <td class="text-right ${fillRateClass}">${item.fill_rate.toFixed(2)}%</td>
+            <td class="text-right ${fillRateAcumClass}">${fillRateAcum.toFixed(2)}%</td>
             <td class="alertas-cell">${formatAlertas(item.alertas)}</td>
           </tr>
         `;
@@ -1097,7 +1113,13 @@ async function abrirDetalleRecepcion(oc, proveedor) {
       throw new Error(data.error || 'Error al obtener detalle');
     }
     
-    detalleOCActual = data;
+    // Guardar datos completos para exportar Excel
+    detalleOCActual = {
+      oc: oc,
+      proveedor: proveedor,
+      productos: data.productos,
+      totales: data.totales
+    };
     cambiosPendientes = {};
     
     // Actualizar título del modal
@@ -1131,7 +1153,21 @@ function actualizarTotalesDetalle(totales) {
 function renderizarTablaDetalle(productos) {
   const tbody = document.getElementById('tbodyDetalleRecepcion');
   
-  tbody.innerHTML = productos.map(p => {
+  // Ordenar productos: primero los que tienen alertas, luego sin alertas
+  const productosOrdenados = [...productos].sort((a, b) => {
+    const alertasA = a.alertas ? a.alertas.length : 0;
+    const alertasB = b.alertas ? b.alertas.length : 0;
+    
+    // Primero los que tienen más alertas
+    if (alertasB !== alertasA) {
+      return alertasB - alertasA;
+    }
+    
+    // Si tienen la misma cantidad de alertas, ordenar por código
+    return (a.cod_prod || '').localeCompare(b.cod_prod || '');
+  });
+  
+  tbody.innerHTML = productosOrdenados.map(p => {
     // Formatear alertas
     let alertasHtml = '';
     if (p.alertas && p.alertas.length > 0) {
@@ -1153,8 +1189,8 @@ function renderizarTablaDetalle(productos) {
       <tr class="${rowClass}" data-id="${p.id}" data-cod="${p.cod_prod}">
         <td class="cod-prod"><code>${p.cod_prod}</code></td>
         <td class="producto-nombre" title="${p.producto || ''}">${truncarTexto(p.producto, 30)}</td>
-        <td class="text-right">${formatNumber(p.precio_caja)}</td>
-        <td class="text-right">${formatNumber(p.cantidad_caja)}</td>
+        <td class="text-right">${formatNumber(p.precio_prod_oc)}</td>
+        <td class="text-right">${formatNumber(p.cantidad_prod_oc)}</td>
         <td class="text-right monto">$${formatNumber(p.total_oc)}</td>
         <td class="text-right editable" onclick="hacerEditable(this, '${p.id}', 'precio_prod_recepcion', ${p.precio_prod_recepcion})">
           <span class="editable-value">${formatNumber(p.precio_prod_recepcion)}</span>
@@ -1300,7 +1336,7 @@ async function guardarCambiosRecepcion() {
     return;
   }
   
-  if (!confirm(`¿Guardar cambios en ${productosModificados.length} producto(s)?`)) {
+  if (!confirm(`¿Cerrar recepción de OC ${detalleOCActual.oc}?\n\nSe actualizarán ${productosModificados.length} producto(s) con los valores ingresados.\nLos demás productos quedarán con cantidad 0 (no recepcionados).`)) {
     return;
   }
   
@@ -1312,13 +1348,16 @@ async function guardarCambiosRecepcion() {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ productos: productosModificados })
+      body: JSON.stringify({ 
+        productos: productosModificados,
+        oc: detalleOCActual.oc  // Enviar el número de OC para cerrar todos los productos
+      })
     });
     
     const result = await response.json();
     
     if (result.success) {
-      alert(`✅ ${result.results.exitosos} producto(s) actualizado(s) correctamente`);
+      alert(`✅ ${result.message}`);
       
       // Cerrar modal y recargar datos
       closeDetalleModal();
@@ -1344,6 +1383,492 @@ function closeDetalleModal() {
   document.getElementById('detalleRecepcionModal').classList.remove('active');
   detalleOCActual = null;
   cambiosPendientes = {};
+}
+
+// Descargar Excel de detalle recepción OC
+function descargarExcelRecepcion() {
+  if (!detalleOCActual || !detalleOCActual.productos) {
+    alert('No hay datos para descargar');
+    return;
+  }
+
+  const productos = detalleOCActual.productos;
+  const oc = detalleOCActual.oc;
+  const proveedor = detalleOCActual.proveedor || '';
+
+  // Crear datos para Excel
+  const datosExcel = productos.map(p => {
+    // Usar valores modificados si existen
+    const precioRecepcion = cambiosPendientes[p.id]?.precio_prod_recepcion ?? p.precio_prod_recepcion;
+    const cantRecepcion = cambiosPendientes[p.id]?.cant_prod_recepcion ?? p.cant_prod_recepcion;
+    const totalRecepcion = precioRecepcion * cantRecepcion;
+    
+    // Determinar alertas
+    let alertas = [];
+    if (p.alertas && p.alertas.length > 0) {
+      alertas = p.alertas.map(a => a.tipo).join(', ');
+    }
+
+    return {
+      'Código': p.cod_prod || '',
+      'Producto': p.producto || '',
+      'Precio OC': p.precio_prod_oc || 0,
+      'Cant. OC': p.cantidad_prod_oc || 0,
+      'Total OC': p.total_oc || 0,
+      'Precio Recepción': precioRecepcion || 0,
+      'Cant. Recepción': cantRecepcion || 0,
+      'Total Recepción': Math.round(totalRecepcion) || 0,
+      'Alertas': alertas
+    };
+  });
+
+  // Crear worksheet
+  const ws = XLSX.utils.json_to_sheet(datosExcel);
+
+  // Ajustar anchos de columna
+  ws['!cols'] = [
+    { wch: 15 },  // Código
+    { wch: 40 },  // Producto
+    { wch: 12 },  // Precio OC
+    { wch: 10 },  // Cant. OC
+    { wch: 12 },  // Total OC
+    { wch: 15 },  // Precio Recepción
+    { wch: 15 },  // Cant. Recepción
+    { wch: 15 },  // Total Recepción
+    { wch: 20 }   // Alertas
+  ];
+
+  // Crear workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detalle Recepción');
+
+  // Descargar archivo
+  const fecha = new Date().toISOString().split('T')[0];
+  const proveedorLimpio = proveedor.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+  const nombreArchivo = `Recepcion_OC_${oc}_${proveedorLimpio}_${fecha}.xlsx`;
+  XLSX.writeFile(wb, nombreArchivo);
+}
+
+// ============================================================================
+// OT TRANSFERENCIAS - Historial de transferencias
+// ============================================================================
+
+async function loadOTTransferencias() {
+  try {
+    const response = await fetch(`${API_BASE}/api/ot-transferencias`);
+    const data = await response.json();
+    
+    const tbody = document.getElementById('tbody-ot-transferencias');
+    const emptyState = document.getElementById('tabla-ot-transferencias-empty');
+    const tablaScroll = document.querySelector('#panel-ot-transferencias .tabla-recepciones-scroll');
+    
+    if (!tbody) return;
+    
+    if (data.success && data.data && data.data.length > 0) {
+      // Renderizar filas con onclick para abrir detalle
+      tbody.innerHTML = data.data.map(item => {
+        // Determinar clase de fill rate
+        let fillRateClass = '';
+        if (item.fill_rate >= 100) {
+          fillRateClass = 'fill-rate-completo';
+        } else if (item.fill_rate >= 80) {
+          fillRateClass = 'fill-rate-alto';
+        } else if (item.fill_rate >= 50) {
+          fillRateClass = 'fill-rate-medio';
+        } else {
+          fillRateClass = 'fill-rate-bajo';
+        }
+        
+        return `
+          <tr class="clickable-row" onclick="abrirDetalleTransferencia('${item.id_ot}', '${item.cliente}')" title="Clic para ver detalle y editar">
+            <td class="fecha">${formatFecha(item.fecha_actualizacion)}</td>
+            <td>${item.cliente}</td>
+            <td><strong>${item.id_ot}</strong></td>
+            <td class="text-right">${formatNumber(item.total_unidades)}</td>
+            <td class="text-right ${fillRateClass}">${item.fill_rate.toFixed(2)}%</td>
+          </tr>
+        `;
+      }).join('');
+      
+      if (tablaScroll) tablaScroll.style.display = 'block';
+      if (emptyState) emptyState.classList.remove('visible');
+      
+      // Calcular y mostrar resumen
+      calcularResumenTransferencias(data.data);
+      
+    } else {
+      tbody.innerHTML = '';
+      if (tablaScroll) tablaScroll.style.display = 'none';
+      if (emptyState) emptyState.classList.add('visible');
+      
+      // Limpiar resumen
+      document.getElementById('ot-total-transferencias').textContent = '0';
+      document.getElementById('ot-total-unidades').textContent = '0';
+      document.getElementById('ot-fill-rate-promedio').textContent = '0%';
+    }
+    
+  } catch (error) {
+    console.error('Error cargando transferencias OT:', error);
+  }
+}
+
+function calcularResumenTransferencias(data) {
+  const totalTransferencias = data.length;
+  const totalUnidades = data.reduce((sum, item) => sum + item.total_unidades, 0);
+  const fillRatePromedio = data.length > 0 
+    ? data.reduce((sum, item) => sum + item.fill_rate, 0) / data.length 
+    : 0;
+  
+  document.getElementById('ot-total-transferencias').textContent = totalTransferencias;
+  document.getElementById('ot-total-unidades').textContent = formatNumber(totalUnidades);
+  document.getElementById('ot-fill-rate-promedio').textContent = `${fillRatePromedio.toFixed(2)}%`;
+}
+
+// ============================================================================
+// DETALLE DE TRANSFERENCIA OT - Modal y edición
+// ============================================================================
+
+let detalleOTActual = null;
+let cambiosPendientesOT = {};
+
+async function abrirDetalleTransferencia(idOt, cliente) {
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/ot-detalle/${encodeURIComponent(idOt)}`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || 'Error al obtener detalle');
+    }
+    
+    // Guardar datos completos de OT actual para exportar Excel
+    detalleOTActual = {
+      id_ot: idOt,
+      cliente: cliente || data.cliente,
+      productos: data.productos,
+      totales: data.totales
+    };
+    cambiosPendientesOT = {};
+    
+    // Actualizar header del modal
+    document.getElementById('detalleOTModalTitle').textContent = `Detalle de Transferencia: ${idOt}`;
+    document.getElementById('detalleOTModalSubtitle').textContent = `Cliente: ${detalleOTActual.cliente}`;
+    
+    // Actualizar totales
+    actualizarTotalesDetalleOT(data.totales);
+    
+    // Renderizar tabla de productos
+    renderizarTablaDetalleOT(data.productos);
+    
+    // Mostrar modal
+    document.getElementById('detalleTransferenciaModal').classList.add('active');
+    
+  } catch (error) {
+    console.error('Error abriendo detalle OT:', error);
+    alert('Error al cargar el detalle de la OT: ' + error.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+function actualizarTotalesDetalleOT(totales) {
+  document.getElementById('totalOTPreparacion').textContent = formatNumber(totales.total_preparacion);
+  document.getElementById('totalOTRecepcion').textContent = formatNumber(totales.total_recepcion);
+  document.getElementById('totalOTValorizado').textContent = `$${formatNumber(Math.round(totales.total_valorizado))}`;
+  document.getElementById('totalOTProductos').textContent = `${totales.productos_recepcionados} / ${totales.productos_total}`;
+  document.getElementById('totalOTConAlertas').textContent = totales.productos_con_alertas;
+}
+
+function renderizarTablaDetalleOT(productos) {
+  const tbody = document.getElementById('tbodyDetalleTransferencia');
+  
+  // Ordenar productos: 
+  // 1. Alertas con diferencia positiva (exceso) primero
+  // 2. Alertas con diferencia negativa (faltante)
+  // 3. Sin alertas (coinciden) al final
+  const productosOrdenados = [...productos].sort((a, b) => {
+    // Calcular diferencias
+    const difA = a.alerta ? a.alerta.diferencia : 0;
+    const difB = b.alerta ? b.alerta.diferencia : 0;
+    
+    // Prioridad: exceso (positivo) > faltante (negativo) > sin alerta (0)
+    const prioridadA = difA > 0 ? 1 : (difA < 0 ? 2 : 3);
+    const prioridadB = difB > 0 ? 1 : (difB < 0 ? 2 : 3);
+    
+    if (prioridadA !== prioridadB) {
+      return prioridadA - prioridadB;
+    }
+    
+    // Dentro de la misma prioridad, ordenar por magnitud de diferencia (mayor primero)
+    return Math.abs(difB) - Math.abs(difA);
+  });
+  
+  tbody.innerHTML = productosOrdenados.map(p => {
+    // Formatear alerta
+    let alertaHtml = '';
+    if (p.alerta) {
+      let clase = 'alerta-badge';
+      if (p.alerta.tipo === 'exceso') {
+        clase += ' alerta-sobre-recepcion';
+      } else {
+        clase += ' alerta-sin-recepcion';
+      }
+      alertaHtml = `<span class="${clase}" title="${p.alerta.mensaje}">${p.alerta.tipo === 'exceso' ? '⬆️' : '⬇️'} ${Math.abs(p.alerta.diferencia)}</span>`;
+    } else {
+      alertaHtml = '<span class="sin-alertas">✓</span>';
+    }
+    
+    // Determinar si tiene alertas
+    const rowClass = p.alerta ? 'tiene-alertas' : '';
+    
+    // Truncar nombre si es muy largo
+    const nombreCorto = p.nombre && p.nombre.length > 25 ? p.nombre.substring(0, 25) + '...' : (p.nombre || '-');
+    
+    return `
+      <tr class="${rowClass}" data-id="${p.id}" data-sku="${p.sku}" data-precio="${p.precio_base}">
+        <td class="tipo">${p.tipo || '-'}</td>
+        <td class="sku"><code>${p.sku}</code></td>
+        <td class="nombre" title="${p.nombre || ''}">${nombreCorto}</td>
+        <td class="text-right monto valorizado">$${formatNumber(Math.round(p.valorizado))}</td>
+        <td class="text-right">${formatNumber(p.cantidad_preparada)}</td>
+        <td class="text-right editable" onclick="hacerEditableOT(this, '${p.id}', 'cantidad_recepcionada', ${p.cantidad_recepcionada})">
+          <span class="editable-value">${formatNumber(p.cantidad_recepcionada)}</span>
+        </td>
+        <td class="alertas-cell">${alertaHtml}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function hacerEditableOT(celda, id, campo, valorActual) {
+  // Si ya está en modo edición, no hacer nada
+  if (celda.querySelector('input')) return;
+  
+  const valorSpan = celda.querySelector('.editable-value');
+  const valorOriginal = valorActual;
+  
+  // Crear input
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'editable-input';
+  input.value = valorOriginal;
+  input.step = '1';
+  input.min = '0';
+  
+  // Ocultar span y mostrar input
+  valorSpan.style.display = 'none';
+  celda.appendChild(input);
+  input.focus();
+  input.select();
+  
+  // Eventos
+  input.addEventListener('blur', () => guardarValorEditadoOT(celda, input, id, campo, valorOriginal));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      guardarValorEditadoOT(celda, input, id, campo, valorOriginal);
+    } else if (e.key === 'Escape') {
+      input.value = valorOriginal;
+      guardarValorEditadoOT(celda, input, id, campo, valorOriginal);
+    }
+  });
+}
+
+function guardarValorEditadoOT(celda, input, id, campo, valorOriginal) {
+  const nuevoValor = parseFloat(input.value) || 0;
+  const valorSpan = celda.querySelector('.editable-value');
+  
+  // Actualizar span
+  valorSpan.textContent = formatNumber(nuevoValor);
+  valorSpan.style.display = '';
+  
+  // Remover input
+  input.remove();
+  
+  // Si cambió el valor, guardarlo en pendientes
+  if (nuevoValor !== valorOriginal) {
+    celda.classList.add('modificado');
+    
+    // Obtener datos de la fila
+    const fila = celda.closest('tr');
+    const sku = fila.dataset.sku;
+    
+    if (!cambiosPendientesOT[id]) {
+      cambiosPendientesOT[id] = { id, sku };
+    }
+    cambiosPendientesOT[id][campo] = nuevoValor;
+    
+    // Recalcular alertas en la fila
+    recalcularAlertaFilaOT(fila, nuevoValor);
+  }
+}
+
+function recalcularAlertaFilaOT(fila, cantRecepcionada) {
+  const celdas = fila.querySelectorAll('td');
+  const cantPreparada = parseFloat(celdas[4].textContent.replace(/,/g, '')) || 0;
+  const alertaCell = celdas[6];
+  const valorizadoCell = celdas[3];
+  
+  // Obtener precio base del data attribute
+  const precioBase = parseFloat(fila.dataset.precio) || 0;
+  
+  // Actualizar valorizado
+  const nuevoValorizado = cantRecepcionada * precioBase;
+  valorizadoCell.textContent = `$${formatNumber(Math.round(nuevoValorizado))}`;
+  
+  // Calcular nueva alerta
+  if (cantPreparada !== cantRecepcionada) {
+    const diferencia = cantRecepcionada - cantPreparada;
+    const tipo = diferencia > 0 ? 'exceso' : 'faltante';
+    const clase = tipo === 'exceso' ? 'alerta-sobre-recepcion' : 'alerta-sin-recepcion';
+    const icono = tipo === 'exceso' ? '⬆️' : '⬇️';
+    alertaCell.innerHTML = `<span class="alerta-badge ${clase}" title="Preparado: ${cantPreparada} ≠ Recepcionado: ${cantRecepcionada}">${icono} ${Math.abs(diferencia)}</span>`;
+    fila.classList.add('tiene-alertas');
+  } else {
+    alertaCell.innerHTML = '<span class="sin-alertas">✓</span>';
+    fila.classList.remove('tiene-alertas');
+  }
+  
+  // Recalcular total valorizado
+  recalcularTotalValorizadoOT();
+}
+
+function recalcularTotalValorizadoOT() {
+  const filas = document.querySelectorAll('#tbodyDetalleTransferencia tr');
+  let totalValorizado = 0;
+  let totalRecepcion = 0;
+  
+  filas.forEach(fila => {
+    const celdas = fila.querySelectorAll('td');
+    const valorizado = parseFloat(celdas[3].textContent.replace(/[$,]/g, '')) || 0;
+    const cantRecepcionada = parseFloat(celdas[5].querySelector('.editable-value')?.textContent.replace(/,/g, '') || celdas[5].textContent.replace(/,/g, '')) || 0;
+    totalValorizado += valorizado;
+    totalRecepcion += cantRecepcionada;
+  });
+  
+  document.getElementById('totalOTValorizado').textContent = `$${formatNumber(Math.round(totalValorizado))}`;
+  document.getElementById('totalOTRecepcion').textContent = formatNumber(totalRecepcion);
+}
+
+async function guardarCambiosTransferencia() {
+  const productosModificados = Object.values(cambiosPendientesOT);
+  
+  if (productosModificados.length === 0) {
+    alert('No hay cambios pendientes para guardar');
+    return;
+  }
+  
+  if (!confirm(`¿Guardar cambios en ${productosModificados.length} producto(s)?`)) {
+    return;
+  }
+  
+  showLoading(true);
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/ot/actualizar-recepciones-batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ 
+        productos: productosModificados,
+        id_ot: detalleOTActual.id_ot
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      alert(`✅ ${result.message}`);
+      
+      // Cerrar modal y recargar datos
+      closeDetalleOTModal();
+      loadOTTransferencias();
+      
+    } else {
+      let errorMsg = result.message || 'Error al guardar cambios';
+      if (result.results?.errores && result.results.errores.length > 0) {
+        errorMsg += '\n\nErrores:\n' + result.results.errores.join('\n');
+      }
+      alert('⚠️ ' + errorMsg);
+    }
+    
+  } catch (error) {
+    console.error('Error guardando cambios OT:', error);
+    alert('Error de conexión: ' + error.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+function closeDetalleOTModal() {
+  document.getElementById('detalleTransferenciaModal').classList.remove('active');
+  detalleOTActual = null;
+  cambiosPendientesOT = {};
+}
+
+// Descargar Excel de detalle transferencia
+function descargarExcelTransferencia() {
+  if (!detalleOTActual || !detalleOTActual.productos) {
+    alert('No hay datos para descargar');
+    return;
+  }
+
+  const productos = detalleOTActual.productos;
+  const idOt = detalleOTActual.id_ot;
+  const cliente = detalleOTActual.cliente || '';
+
+  // Crear datos para Excel
+  const datosExcel = productos.map(p => {
+    // Usar cantidad modificada si existe
+    const cantRecepcionada = cambiosPendientesOT[p.id] !== undefined 
+      ? cambiosPendientesOT[p.id].cantidad_recepcionada 
+      : (p.cantidad_recepcionada || 0);
+    
+    const valorizado = cantRecepcionada * (p.precio_base || 0);
+    
+    let alerta = '';
+    const diff = cantRecepcionada - (p.cantidad_preparada || 0);
+    if (diff > 0) alerta = 'Exceso';
+    else if (diff < 0) alerta = 'Faltante';
+
+    return {
+      'Tipo': p.tipo || '',
+      'SKU': p.sku || '',
+      'Nombre': p.nombre || '',
+      'Precio Base': p.precio_base || 0,
+      'Valorizado': Math.round(valorizado),
+      'Cant. Preparada': p.cantidad_preparada || 0,
+      'Cant. Recepcionada': cantRecepcionada,
+      'Diferencia': diff,
+      'Alerta': alerta
+    };
+  });
+
+  // Crear worksheet
+  const ws = XLSX.utils.json_to_sheet(datosExcel);
+
+  // Ajustar anchos de columna
+  ws['!cols'] = [
+    { wch: 10 },  // Tipo
+    { wch: 18 },  // SKU
+    { wch: 40 },  // Nombre
+    { wch: 12 },  // Precio Base
+    { wch: 12 },  // Valorizado
+    { wch: 15 },  // Cant. Preparada
+    { wch: 18 },  // Cant. Recepcionada
+    { wch: 12 },  // Diferencia
+    { wch: 10 }   // Alerta
+  ];
+
+  // Crear workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Detalle Transferencia');
+
+  // Descargar archivo
+  const fecha = new Date().toISOString().split('T')[0];
+  const nombreArchivo = `Transferencia_${idOt}_${cliente}_${fecha}.xlsx`;
+  XLSX.writeFile(wb, nombreArchivo);
 }
 
 // Cargar stats iniciales según módulo activo
