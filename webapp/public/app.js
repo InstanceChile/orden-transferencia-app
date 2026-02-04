@@ -1752,13 +1752,15 @@ function recalcularTotalValorizadoOT() {
 
 async function guardarCambiosTransferencia() {
   const productosModificados = Object.values(cambiosPendientesOT);
+  const totalProductos = detalleOTActual?.productos?.length || 0;
+  const noEditados = totalProductos - productosModificados.length;
   
   if (productosModificados.length === 0) {
     alert('No hay cambios pendientes para guardar');
     return;
   }
   
-  if (!confirm(`¿Guardar cambios en ${productosModificados.length} producto(s)?`)) {
+  if (!confirm(`¿Cerrar recepción de OT ${detalleOTActual.id_ot}?\n\nSe actualizarán ${productosModificados.length} producto(s) con los valores ingresados.\nLos demás ${noEditados} producto(s) quedarán con cantidad recepcionada = 0.`)) {
     return;
   }
   
