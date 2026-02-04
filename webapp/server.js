@@ -1005,7 +1005,7 @@ app.post('/api/oc/actualizar-fecha', async (req, res) => {
 // ============================================================================
 // CARGA DE OC (Orden de Compra)
 // Usa tabla existente: "Orden_Compra" con campos PascalCase
-// CORRECCIÓN: Valida que la OC no exista previamente para evitar duplicados
+// UPSERT COMPLETO: Actualiza existentes, inserta nuevos, elimina faltantes
 // ============================================================================
 app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
   try {
@@ -1025,28 +1025,42 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
       .map(r => cleanText(r.id_oc || r.Oc || r.oc || r.OC))
     )];
 
-    // Verificar si alguna OC ya existe en la base de datos
-    if (ocsEnArchivo.length > 0) {
-      const { data: existentes, error: checkError } = await supabase
-        .from('Orden_Compra')
-        .select('Oc')
-        .in('Oc', ocsEnArchivo);
-
-      if (checkError) {
-        return res.status(500).json({ success: false, error: `Error verificando duplicados: ${checkError.message}` });
-      }
-
-      if (existentes && existentes.length > 0) {
-        const ocsExistentes = [...new Set(existentes.map(e => e.Oc))];
-        return res.status(400).json({ 
-          success: false, 
-          error: `Las siguientes OC ya existen en el sistema y no se pueden duplicar: ${ocsExistentes.join(', ')}. Si desea registrar la recepción, use la sección "Recepción".`,
-          duplicados: ocsExistentes
-        });
-      }
+    if (ocsEnArchivo.length === 0) {
+      return res.status(400).json({ success: false, error: 'No se encontraron números de OC en el archivo' });
     }
 
-    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    // Obtener productos existentes de estas OCs
+    const { data: existentes, error: checkError } = await supabase
+      .from('Orden_Compra')
+      .select('Id, Oc, Cod_Prod, Estado')
+      .in('Oc', ocsEnArchivo);
+
+    if (checkError) {
+      return res.status(500).json({ success: false, error: `Error verificando existentes: ${checkError.message}` });
+    }
+
+    // Crear mapa de productos existentes por OC+Cod_Prod
+    const existentesMap = {};
+    const existentesPorOc = {};
+    if (existentes && existentes.length > 0) {
+      existentes.forEach(e => {
+        const key = `${e.Oc}|${e.Cod_Prod}`;
+        existentesMap[key] = e;
+        if (!existentesPorOc[e.Oc]) existentesPorOc[e.Oc] = [];
+        existentesPorOc[e.Oc].push(e);
+      });
+    }
+
+    const results = { 
+      insertados: 0, 
+      actualizados: 0, 
+      eliminados: 0,
+      fallidos: 0, 
+      errores: [] 
+    };
+
+    // Procesar cada registro del archivo
+    const productosEnArchivoPorOc = {};
 
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
@@ -1063,6 +1077,10 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
           results.errores.push(`Fila ${rowNum}: Faltan campos obligatorios (Oc: "${idOc || 'vacío'}", Cod_Prod: "${codProd || 'vacío'}")`);
           continue;
         }
+
+        // Registrar producto en el mapa para luego eliminar los que no están
+        if (!productosEnArchivoPorOc[idOc]) productosEnArchivoPorOc[idOc] = new Set();
+        productosEnArchivoPorOc[idOc].add(codProd);
 
         // Validar cantidad (obligatorio)
         const cantidadResult = parseRequiredNumber(
@@ -1132,38 +1150,70 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
         const bodegaAutomatica = getBodegaPorCliente(proveedorValue);
         const bodegaFinal = bodegaAutomatica || cleanText(row.bodega || row.Bodega) || 'Sin asignar';
 
-        // Preparar datos para insertar - usando nombres de columna de la tabla existente
-        const recordData = {
-          Id: idDetOc,
-          Oc: idOc,
-          Cod_Prod: codProd,
-          SKU: sku,
-          Producto: cleanText(row.producto || row.Producto),
-          Proveedor: proveedorValue,
-          Bodega: bodegaFinal,
-          Precio_Prod_Oc: precioUnitarioResult.value,
-          Precio_Caja: precioCajaResult.value,
-          Cantidad_Prod_Oc: cantidadOc,
-          Cantidad_Caja: cantidadCajaResult.value,
-          UXC: uxcResult.value,
-          Total: totalResult.value,
-          Fecha_Creacion: cleanText(row.fecha_creacion || row.Fecha_Creacion || row['Fecha Creacion']) || new Date().toISOString().split('T')[0],
-          Fecha_Recepcion: cleanText(row.fecha_recepcion_esperada || row.Fecha_Recepcion || row['Fecha Recepcion']),
-          Estado: 'Creado',
-          Hoja_Origen: 'WebApp',
-          Fecha_Procesamiento: new Date().toISOString()
-        };
+        // Verificar si el producto ya existe para esta OC
+        const keyExistente = `${idOc}|${codProd}`;
+        const productoExistente = existentesMap[keyExistente];
 
-        // Usar insert en lugar de upsert para evitar sobrescribir
-        const { error } = await supabase
-          .from('Orden_Compra')
-          .insert(recordData);
+        if (productoExistente) {
+          // ACTUALIZAR producto existente
+          const updateData = {
+            SKU: sku,
+            Producto: cleanText(row.producto || row.Producto),
+            Proveedor: proveedorValue,
+            Bodega: bodegaFinal,
+            Precio_Prod_Oc: precioUnitarioResult.value,
+            Precio_Caja: precioCajaResult.value,
+            Cantidad_Prod_Oc: cantidadOc,
+            Cantidad_Caja: cantidadCajaResult.value,
+            UXC: uxcResult.value,
+            Total: totalResult.value,
+            Fecha_Procesamiento: new Date().toISOString()
+          };
 
-        if (error) {
-          throw new Error(error.message || 'Error al guardar en base de datos');
+          const { error } = await supabase
+            .from('Orden_Compra')
+            .update(updateData)
+            .eq('Id', productoExistente.Id);
+
+          if (error) {
+            throw new Error(error.message || 'Error al actualizar en base de datos');
+          }
+          
+          results.actualizados++;
+
+        } else {
+          // INSERTAR nuevo producto
+          const recordData = {
+            Id: idDetOc,
+            Oc: idOc,
+            Cod_Prod: codProd,
+            SKU: sku,
+            Producto: cleanText(row.producto || row.Producto),
+            Proveedor: proveedorValue,
+            Bodega: bodegaFinal,
+            Precio_Prod_Oc: precioUnitarioResult.value,
+            Precio_Caja: precioCajaResult.value,
+            Cantidad_Prod_Oc: cantidadOc,
+            Cantidad_Caja: cantidadCajaResult.value,
+            UXC: uxcResult.value,
+            Total: totalResult.value,
+            Fecha_Creacion: cleanText(row.fecha_creacion || row.Fecha_Creacion || row['Fecha Creacion']) || new Date().toISOString().split('T')[0],
+            Fecha_Recepcion: cleanText(row.fecha_recepcion_esperada || row.Fecha_Recepcion || row['Fecha Recepcion']),
+            Estado: 'Creado',
+            Hoja_Origen: 'WebApp',
+            Fecha_Procesamiento: new Date().toISOString()
+          };
+
+          const { error } = await supabase
+            .from('Orden_Compra')
+            .insert(recordData);
+
+          if (error) {
+            throw new Error(error.message || 'Error al insertar en base de datos');
+          }
+          
+          results.insertados++;
         }
-        
-        results.exitosos++;
 
       } catch (error) {
         results.fallidos++;
@@ -1172,9 +1222,40 @@ app.post('/api/upload/oc', upload.single('file'), async (req, res) => {
       }
     }
 
+    // ELIMINAR productos que ya no están en el archivo (solo si la OC existe)
+    for (const oc of ocsEnArchivo) {
+      const productosExistentesOc = existentesPorOc[oc] || [];
+      const productosEnArchivoOc = productosEnArchivoPorOc[oc] || new Set();
+
+      for (const prodExistente of productosExistentesOc) {
+        // Si el producto existente no está en el archivo, eliminarlo
+        // Solo eliminar si el estado es 'Creado' (no eliminar productos ya recepcionados)
+        if (!productosEnArchivoOc.has(prodExistente.Cod_Prod)) {
+          if (prodExistente.Estado === 'Creado') {
+            const { error } = await supabase
+              .from('Orden_Compra')
+              .delete()
+              .eq('Id', prodExistente.Id);
+
+            if (error) {
+              results.errores.push(`Error eliminando ${prodExistente.Cod_Prod} de OC ${oc}: ${error.message}`);
+            } else {
+              results.eliminados++;
+            }
+          } else {
+            // Producto ya recepcionado, no se puede eliminar
+            results.errores.push(`Producto ${prodExistente.Cod_Prod} de OC ${oc} no eliminado (ya tiene estado: ${prodExistente.Estado})`);
+          }
+        }
+      }
+    }
+
+    const totalExitosos = results.insertados + results.actualizados;
+    console.log(`✅ OC procesada: ${results.insertados} insertados, ${results.actualizados} actualizados, ${results.eliminados} eliminados, ${results.fallidos} fallidos`);
+
     res.json({
       success: results.fallidos === 0,
-      message: `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`,
+      message: `Procesados ${records.length} registros: ${results.insertados} insertados, ${results.actualizados} actualizados, ${results.eliminados} eliminados, ${results.fallidos} fallidos`,
       results
     });
 
@@ -1569,35 +1650,51 @@ app.get('/api/ot-detalle/:id_ot', async (req, res) => {
 
 // ============================================================================
 // ACTUALIZAR RECEPCIÓN DE TRANSFERENCIA OT - Batch
+// Actualiza TODOS los productos de la OT, no solo los editados
 // ============================================================================
 app.post('/api/ot/actualizar-recepciones-batch', async (req, res) => {
   try {
     const { productos, id_ot } = req.body;
 
-    if (!productos || !Array.isArray(productos) || productos.length === 0) {
-      return res.status(400).json({ success: false, error: 'Lista de productos requerida' });
+    if (!id_ot) {
+      return res.status(400).json({ success: false, error: 'ID de OT requerido' });
     }
 
-    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    // Crear mapa de productos editados por ID
+    const productosEditados = {};
+    if (productos && Array.isArray(productos)) {
+      productos.forEach(p => {
+        if (p.id) {
+          productosEditados[p.id] = p;
+        }
+      });
+    }
+
+    // Obtener TODOS los productos de esta OT
+    const { data: todosProductos, error: fetchError } = await supabase
+      .from('transfer_orders')
+      .select('id, sku, cantidad_preparada, cantidad_recepcionada')
+      .eq('id_ot', id_ot);
+
+    if (fetchError) throw fetchError;
+
+    if (!todosProductos || todosProductos.length === 0) {
+      return res.status(404).json({ success: false, error: 'No se encontraron productos para esta OT' });
+    }
+
+    const results = { exitosos: 0, fallidos: 0, errores: [], totalProductos: todosProductos.length };
     const fechaActualizacion = new Date().toISOString();
 
-    for (const producto of productos) {
+    // Actualizar cada producto
+    for (const producto of todosProductos) {
       try {
-        if (!producto.id) {
-          results.fallidos++;
-          results.errores.push(`Producto sin ID`);
-          continue;
-        }
-
-        // Obtener cantidad_preparada para determinar el estado
-        const { data: otData } = await supabase
-          .from('transfer_orders')
-          .select('cantidad_preparada')
-          .eq('id', producto.id)
-          .single();
-
-        const cantRecepcionada = parseFloat(producto.cantidad_recepcionada) || 0;
-        const cantPreparada = otData?.cantidad_preparada || 0;
+        // Verificar si fue editado, sino usar cantidad_recepcionada = 0
+        const productoEditado = productosEditados[producto.id];
+        const cantRecepcionada = productoEditado 
+          ? (parseFloat(productoEditado.cantidad_recepcionada) || 0)
+          : 0; // Si no fue editado, cantidad = 0
+        
+        const cantPreparada = parseFloat(producto.cantidad_preparada) || 0;
 
         // Determinar estado según diferencia
         let estado = 'Entregado_Sin_Novedad';
@@ -1607,6 +1704,9 @@ app.post('/api/ot/actualizar-recepciones-batch', async (req, res) => {
           if (porcentaje > 0.05) {
             estado = 'Entregado_con_Novedad';
           }
+        } else if (cantRecepcionada > 0) {
+          // Si no había preparación pero sí recepción
+          estado = 'Entregado_con_Novedad';
         }
 
         const updateData = {
@@ -1634,11 +1734,14 @@ app.post('/api/ot/actualizar-recepciones-batch', async (req, res) => {
       }
     }
 
-    console.log(`✅ Recepciones OT ${id_ot} actualizadas: ${results.exitosos} exitosos, ${results.fallidos} fallidos`);
+    const editados = Object.keys(productosEditados).length;
+    const noEditados = todosProductos.length - editados;
+    
+    console.log(`✅ Recepciones OT ${id_ot} cerradas: ${results.exitosos}/${todosProductos.length} productos (${editados} editados, ${noEditados} con cantidad 0)`);
 
     res.json({ 
       success: results.fallidos === 0,
-      message: `${results.exitosos} productos actualizados correctamente`,
+      message: `Recepción cerrada: ${results.exitosos} productos actualizados (${editados} con valores, ${noEditados} con cantidad 0)`,
       results
     });
 
@@ -1810,7 +1913,7 @@ app.get('/api/stats', async (req, res) => {
 
 // ============================================================================
 // CARGA DE OT (Solicitud)
-// CORRECCIÓN: Valida que el id_ot no exista previamente para evitar duplicados
+// UPSERT COMPLETO: Actualiza existentes, inserta nuevos, elimina faltantes
 // ============================================================================
 app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
   try {
@@ -1830,28 +1933,42 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
       .map(r => String(r.id_ot).trim())
     )];
 
-    // Verificar si alguno ya existe en la base de datos
-    if (idsOtEnArchivo.length > 0) {
-      const { data: existentes, error: checkError } = await supabase
-        .from('transfer_orders')
-        .select('id_ot')
-        .in('id_ot', idsOtEnArchivo);
-
-      if (checkError) {
-        return res.status(500).json({ success: false, error: `Error verificando duplicados: ${checkError.message}` });
-      }
-
-      if (existentes && existentes.length > 0) {
-        const idsExistentes = [...new Set(existentes.map(e => e.id_ot))];
-        return res.status(400).json({ 
-          success: false, 
-          error: `Las siguientes OT ya existen en el sistema y no se pueden duplicar: ${idsExistentes.join(', ')}. Si desea actualizar una OT existente, use las secciones correspondientes (OTA, OTADET, OTF).`,
-          duplicados: idsExistentes
-        });
-      }
+    if (idsOtEnArchivo.length === 0) {
+      return res.status(400).json({ success: false, error: 'No se encontraron IDs de OT en el archivo' });
     }
 
-    const results = { exitosos: 0, fallidos: 0, errores: [] };
+    // Obtener productos existentes de estas OTs
+    const { data: existentes, error: checkError } = await supabase
+      .from('transfer_orders')
+      .select('id, id_ot, sku, estado')
+      .in('id_ot', idsOtEnArchivo);
+
+    if (checkError) {
+      return res.status(500).json({ success: false, error: `Error verificando existentes: ${checkError.message}` });
+    }
+
+    // Crear mapa de productos existentes por id_ot+sku
+    const existentesMap = {};
+    const existentesPorOt = {};
+    if (existentes && existentes.length > 0) {
+      existentes.forEach(e => {
+        const key = `${e.id_ot}|${e.sku}`;
+        existentesMap[key] = e;
+        if (!existentesPorOt[e.id_ot]) existentesPorOt[e.id_ot] = [];
+        existentesPorOt[e.id_ot].push(e);
+      });
+    }
+
+    const results = { 
+      insertados: 0, 
+      actualizados: 0, 
+      eliminados: 0,
+      fallidos: 0, 
+      errores: [] 
+    };
+
+    // Procesar cada registro del archivo
+    const productosPorOt = {};
 
     for (let i = 0; i < records.length; i++) {
       const row = records[i];
@@ -1870,6 +1987,13 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
           continue;
         }
 
+        const idOt = String(row.id_ot).trim();
+        const sku = String(row.sku).trim();
+
+        // Registrar producto en el mapa para luego eliminar los que no están
+        if (!productosPorOt[idOt]) productosPorOt[idOt] = new Set();
+        productosPorOt[idOt].add(sku);
+
         const clienteValue = cleanText(row.cliente);
         if (clienteValue && !CLIENTES.includes(clienteValue)) {
           results.fallidos++;
@@ -1877,28 +2001,56 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
           continue;
         }
 
-        const recordData = {
-          id_ot: String(row.id_ot).trim(),
-          sku: String(row.sku).trim(),
-          mlc: cleanText(row.mlc),
-          cliente: clienteValue,
-          fecha_solicitud: parseDate(row.fecha_solicitud) || new Date().toISOString(),
-          fecha_transferencia_comprometida: parseDate(row.fecha_transferencia_comprometida),
-          cantidad_solicitada: parseFloat(row.cantidad_solicitada),
-          estado: 'Solicitado',
-          updated_at: new Date().toISOString()
-        };
+        // Verificar si el producto ya existe para esta OT
+        const keyExistente = `${idOt}|${sku}`;
+        const productoExistente = existentesMap[keyExistente];
 
-        // Usar insert en lugar de upsert para evitar sobrescribir
-        const { error } = await supabase
-          .from('transfer_orders')
-          .insert(recordData);
+        if (productoExistente) {
+          // ACTUALIZAR producto existente
+          const updateData = {
+            mlc: cleanText(row.mlc),
+            cliente: clienteValue,
+            fecha_solicitud: parseDate(row.fecha_solicitud) || new Date().toISOString(),
+            fecha_transferencia_comprometida: parseDate(row.fecha_transferencia_comprometida),
+            cantidad_solicitada: parseFloat(row.cantidad_solicitada),
+            updated_at: new Date().toISOString()
+          };
 
-        if (error) {
-          throw new Error(error.message || 'Error al guardar en base de datos');
+          const { error } = await supabase
+            .from('transfer_orders')
+            .update(updateData)
+            .eq('id', productoExistente.id);
+
+          if (error) {
+            throw new Error(error.message || 'Error al actualizar en base de datos');
+          }
+          
+          results.actualizados++;
+
+        } else {
+          // INSERTAR nuevo producto
+          const recordData = {
+            id_ot: idOt,
+            sku: sku,
+            mlc: cleanText(row.mlc),
+            cliente: clienteValue,
+            fecha_solicitud: parseDate(row.fecha_solicitud) || new Date().toISOString(),
+            fecha_transferencia_comprometida: parseDate(row.fecha_transferencia_comprometida),
+            cantidad_solicitada: parseFloat(row.cantidad_solicitada),
+            estado: 'Solicitado',
+            updated_at: new Date().toISOString()
+          };
+
+          const { error } = await supabase
+            .from('transfer_orders')
+            .insert(recordData);
+
+          if (error) {
+            throw new Error(error.message || 'Error al insertar en base de datos');
+          }
+          
+          results.insertados++;
         }
-        
-        results.exitosos++;
 
       } catch (error) {
         results.fallidos++;
@@ -1907,9 +2059,39 @@ app.post('/api/upload/ot', upload.single('file'), async (req, res) => {
       }
     }
 
+    // ELIMINAR productos que ya no están en el archivo
+    for (const idOt of idsOtEnArchivo) {
+      const productosExistentesOt = existentesPorOt[idOt] || [];
+      const productosEnArchivoOt = productosPorOt[idOt] || new Set();
+
+      for (const prodExistente of productosExistentesOt) {
+        // Si el producto existente no está en el archivo, eliminarlo
+        // Solo eliminar si el estado es 'Solicitado' (no eliminar productos ya preparados/entregados)
+        if (!productosEnArchivoOt.has(prodExistente.sku)) {
+          if (prodExistente.estado === 'Solicitado') {
+            const { error } = await supabase
+              .from('transfer_orders')
+              .delete()
+              .eq('id', prodExistente.id);
+
+            if (error) {
+              results.errores.push(`Error eliminando SKU ${prodExistente.sku} de OT ${idOt}: ${error.message}`);
+            } else {
+              results.eliminados++;
+            }
+          } else {
+            // Producto ya preparado/entregado, no se puede eliminar
+            results.errores.push(`SKU ${prodExistente.sku} de OT ${idOt} no eliminado (estado: ${prodExistente.estado})`);
+          }
+        }
+      }
+    }
+
+    console.log(`✅ OT procesada: ${results.insertados} insertados, ${results.actualizados} actualizados, ${results.eliminados} eliminados, ${results.fallidos} fallidos`);
+
     res.json({
       success: results.fallidos === 0,
-      message: `Procesados ${records.length} registros: ${results.exitosos} exitosos, ${results.fallidos} fallidos`,
+      message: `Procesados ${records.length} registros: ${results.insertados} insertados, ${results.actualizados} actualizados, ${results.eliminados} eliminados, ${results.fallidos} fallidos`,
       results
     });
 
